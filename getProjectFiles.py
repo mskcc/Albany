@@ -18,7 +18,11 @@ if __name__ == "__main__":
     print("\n  Project No = %s\n" % projectNo)
 
     requestData=limsETL.getRequestSamples(projectNo)
-    samples=[limsETL.getSampleManifest(xx.igoSampleId) for xx in requestData.samples]
+    samples=[]
+    for sample in requestData.samples:
+        print("Pulling sample",sample.igoSampleId,"...")
+        samples.append(limsETL.getSampleManifest(sample.igoSampleId))
+        print("\n")
 
     #
     # Dump request file
