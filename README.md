@@ -1,7 +1,5 @@
 # Albany
 
-Mission Albany
-
 ## Installation:
 
 - Clone repository

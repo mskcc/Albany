@@ -2,3 +2,5 @@ conf.py
 *.ipynb
 venv3
 __pycache__
+Proj_*
+__cache__
