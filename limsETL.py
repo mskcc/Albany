@@ -1,6 +1,8 @@
 from conf import settings
 import requests
 import os
+import urllib3
+urllib3.disable_warnings()
 
 class ETLExceptions(Exception):
     code = None
