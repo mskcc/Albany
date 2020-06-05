@@ -1,0 +1,4 @@
+conf.py
+*.ipynb
+venv3
+__pycache__
