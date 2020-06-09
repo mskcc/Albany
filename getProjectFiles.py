@@ -2,15 +2,20 @@
 
 import limsETL
 
+from cachier import cachier
+import datetime
+
 def getRequestSamples(projectNo):
     return limsETL.getRequestSamples(projectNo)
 
+@cachier(cache_dir='./__cache__',stale_after=datetime.timedelta(days=1))
 def getSampleManifest(sampleId):
     print("Pulling sample",sampleId,"...",end="")
     sampleManifest=limsETL.getSampleManifest(sampleId)
     print(" done")
     return sampleManifest
 
+@cachier(cache_dir='./__cache__',stale_after=datetime.timedelta(days=1))
 def getSampleMappingData(sampleObj):
     sampleMappingData=[]
     for lib in sampleObj.libraries:
