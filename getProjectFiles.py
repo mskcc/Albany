@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 
 import limsETL
-
-from cachier import cachier
 import datetime
+
+try:
+    from cachier import cachier
+except ModuleNotFoundError:
+    print("No Cachier Module so no cacheing")
+    def cachier(*args,**kwargs):
+        def inner(f):
+            return f
+        return inner
 
 def getRequestSamples(projectNo):
     return limsETL.getRequestSamples(projectNo)
