@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     requestFieldsToIgnore=set(("samples","pooledNormals"))
 
-    requestFile="Proj_%s_request.txt" % projectNo
+    requestFile="Proj_%s_metadata.yaml" % projectNo
     mappingFile="Proj_%s_sample_mapping.txt" % projectNo
 
     species=",".join(set([s.species for s in samples]))
