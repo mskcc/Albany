@@ -16,14 +16,15 @@ require(tidyverse)
 
 rFile=args[1]
 
-file.copy(rFile,paste0(rFile,".bak"))
-
 request=read_yaml(rFile)
+mapping=read_tsv(gsub("metadata.yaml","sample_mapping.txt",rFile),col_names=F,col_types=cols())
 
 requestRNA=list(
+    ProjectID=cc("Proj",request$requestId),
     Run_Pipeline="rnaseq",
     Institution="bic",
     RunNumber="1",
+    NumberOfSamples=mapping %>% distinct(X2) %>% nrow,
 
     Strand = case_when(
                 request$strand=="stranded-reverse" ~ "Reverse",
@@ -35,17 +36,24 @@ requestRNA=list(
 
     PI_Name = normalizeName(request$labHeadName),
     PI = gsub("@.*$","",request$labHeadEmail),
-    "PI_E-Mail" = request$labHeadEmail,
+    "PI_E-mail" = request$labHeadEmail,
 
     Investigator_Name = normalizeName(request$investigatorName),
     Investigator = gsub("@.*$","",request$investigatorEmail),
     "Investigator_E-mail" = request$investigatorEmail,
 
-    Pipelines="NULL, RNASEQ_STANDARD_GENE_V1, RNASEQ_DIFFERENTIAL_GENE_V1"
+    ProjectFolder=file.path("/ifs/projects/BIC/rnaseq",request$requestId),
+    DeliverTo_Name=request$investigatorName,
+    DeliverTo_Email=request$investigatorEmail,
+
+    Pipelines="NULL, RNASEQ_STANDARD_GENE_V1, RNASEQ_DIFFERENTIAL_GENE_V1",
+
+    `Charges-CCFN`=""
+
     )
 
 
 yy=as.yaml(requestRNA)
 yy=gsub("'","",yy)
-write(yy,"testRequest.txt")
+write(yy,cc("Proj",request$requestId,"request.txt"))
 
