@@ -4,28 +4,7 @@ if(len(args)!=1) {
     quit()
 }
 
-## TODO 2020-06-09
-# Here are the requests for the new request file template:
-
-# -RunNumber needs to be an integer not a floating point.
-# -Please add: ProjectID, ProjectFolder, DeliverTo_Name,
-#     DeliverTo_Email, NumberOfSamples, CCFN
-
-# Once the template is updated, we want to test it with a project
-#that has already been completed
-# (/ifs/projects/BIC/rnaseq/Proj_10827_B/Proj_10827_B_request.txt).
-
-# Then to run 10864, we will still need mapping file. This was not
-# in /ifs/projects/BIC/drafts/Proj_10864/.
-
-
-
-normalizeName<-function(nn) {
-
-    pn=strsplit(nn," ")[[1]]
-    paste0(pn[2],", ",pn[1])
-
-}
+source("/home/socci/Code/LIMS/LimsETL/tools.R")
 
 require(yaml)
 require(tidyverse)

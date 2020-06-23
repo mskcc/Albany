@@ -4,12 +4,7 @@ if(len(args)!=1) {
     quit()
 }
 
-normalizeName<-function(nn) {
-
-    pn=strsplit(nn," ")[[1]]
-    paste0(pn[2],", ",pn[1])
-
-}
+source("/home/socci/Code/LIMS/LimsETL/tools.R")
 
 require(yaml)
 require(tidyverse)
@@ -20,17 +15,15 @@ request=read_yaml(rFile)
 mapping=read_tsv(gsub("metadata.yaml","sample_mapping.txt",rFile),col_names=F,col_types=cols())
 
 requestRNA=list(
+
     ProjectID=cc("Proj",request$requestId),
     Run_Pipeline="rnaseq",
     Institution="bic",
     RunNumber="1",
     NumberOfSamples=mapping %>% distinct(X2) %>% nrow,
 
-    Strand = case_when(
-                request$strand=="stranded-reverse" ~ "Reverse",
-                request$strand=="None" ~ "None",
-                T ~ "UNKOWN"
-            ),
+    LIMS_Strand = request$strand,
+    Strand="Reverse,None",
 
     Species = request$Species,
 
@@ -55,5 +48,5 @@ requestRNA=list(
 
 yy=as.yaml(requestRNA)
 yy=gsub("'","",yy)
-write(yy,cc("Proj",request$requestId,"request.txt"))
+write(yy,"_request")
 
