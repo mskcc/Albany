@@ -54,10 +54,15 @@ class Run:
     #
     def __init__(self,runJson):
         self.__dict__=runJson
-        self.runType=self.getRunType()
-        self.runId=self.getRunId()
-        self.fastqDir=os.path.dirname(self.fastqs[0])
 
+        if len(self.fastqs)>0:
+            self.runType=self.getRunType()
+            self.runId=self.getRunId()
+            self.fastqDir=os.path.dirname(self.fastqs[0])
+        else:
+            self.runType=""
+            self.fastqDir=""
+            self.runId=""
 
     def getRunType(self):
         hasR2File=len([x for x in self.fastqs if x.find("_R2_")>-1])==1
@@ -69,8 +74,6 @@ class Run:
     def getRunId(self):
         pp=self.fastqs[0].find("/FASTQ/")
         return self.fastqs[0][pp:].split("/")[2]
-
-
 
 class Library:
     # 'barcodeId',
