@@ -68,5 +68,6 @@ if __name__ == "__main__":
         for sample in samples:
             out0=["_1","s_"+sample.investigatorSampleId]
             for ri in getSampleMappingData(sample):
-                out=out0+ri
-                fp.write(("\t".join(out)+"\n"))
+                if ri[0]!="":
+                    out=out0+ri
+                    fp.write(("\t".join(out)+"\n"))
