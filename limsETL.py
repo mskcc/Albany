@@ -43,6 +43,16 @@ class RequestSamples:
         self.__dict__=reqSampsJson
         self.samples=[Sample(x) for x in self.samples]
 
+def getRunId(fastqPath):
+    pp=fastqPath.find("/FASTQ/")
+    return fastqPath[pp:].split("/")[2]
+
+class MachineRuns:
+    def __init__(self,fastqi):
+        self.fastqDir=os.path.dirname(fastqi)
+        self.runId=getRunId(fastqi)
+        self.runType="SE"
+
 class Run:
     # 'fastqs',
     # 'flowCellId',
@@ -52,28 +62,23 @@ class Run:
     # 'runId',
     # 'runMode'
     #
+
     def __init__(self,runJson):
         self.__dict__=runJson
-
+        machineRuns=dict()
         if len(self.fastqs)>0:
-            self.runType=self.getRunType()
-            self.runId=self.getRunId()
-            self.fastqDir=os.path.dirname(self.fastqs[0])
-        else:
-            self.runType=""
-            self.fastqDir=""
-            self.runId=""
+            for fastqi in self.fastqs:
+                if getRunId(fastqi) not in machineRuns:
+                    machineRuns[getRunId(fastqi)]=MachineRuns(fastqi)
+                if fastqi.find("_R2_")>-1:
+                    machineRuns[getRunId(fastqi)].runType="PE"
 
-    def getRunType(self):
-        hasR2File=len([x for x in self.fastqs if x.find("_R2_")>-1])==1
-        if hasR2File:
-            return("PE")
-        else:
-            return("SE")
+            self.machineRuns=machineRuns
 
-    def getRunId(self):
-        pp=self.fastqs[0].find("/FASTQ/")
-        return self.fastqs[0][pp:].split("/")[2]
+        else:
+            self.machineRuns=None
+
+
 
 class Library:
     # 'barcodeId',

@@ -25,9 +25,12 @@ def getSampleManifest(sampleId):
 @cachier(cache_dir='./__cache__',stale_after=datetime.timedelta(days=1))
 def getSampleMappingData(sampleObj):
     sampleMappingData=[]
+    print("="*80)
     for lib in sampleObj.libraries:
         for runs in lib.runs:
-            sampleMappingData.append([runs.runId,runs.fastqDir,runs.runType])
+            for runIds in runs.machineRuns:
+                mRun=runs.machineRuns[runIds]
+                sampleMappingData.append([runIds,mRun.fastqDir,mRun.runType])
 
     return(sampleMappingData)
 
@@ -39,7 +42,7 @@ if __name__ == "__main__":
     print("\n  Project No = %s" % projectNo)
 
     requestData=getRequestSamples(projectNo)
-    samples=[getSampleManifest(xx.igoSampleId) for xx in requestData.samples]
+    samples=[getSampleManifest(xx.igoSampleId) for xx in requestData.samples[:2]]
 
     # for sample in requestData.samples:
     #     print("Pulling sample",sample.igoSampleId,"...")
