@@ -22,14 +22,31 @@ def getSampleManifest(sampleId):
     print(" done")
     return sampleManifest
 
+missingSampleMessage="""
+No FASTQ files for:
+            igoId: %s
+       sampleName: %s
+   investSampleId: %s
+"""
+
 @cachier(cache_dir='./__cache__',stale_after=datetime.timedelta(days=1))
 def getSampleMappingData(sampleObj):
     sampleMappingData=[]
     for lib in sampleObj.libraries:
         for runs in lib.runs:
-            for runIds in runs.machineRuns:
-                mRun=runs.machineRuns[runIds]
-                sampleMappingData.append([runIds,mRun.fastqDir,mRun.runType])
+            if runs.machineRuns != None:
+                for runIds in runs.machineRuns:
+                    mRun=runs.machineRuns[runIds]
+                    sampleMappingData.append([runIds,mRun.fastqDir,mRun.runType])
+            else:
+
+                print(missingSampleMessage % (
+                        sampleObj.igoId,
+                        sampleObj.sampleName,
+                        sampleObj.investigatorSampleId
+                        )
+                )
+
 
     return(sampleMappingData)
 
