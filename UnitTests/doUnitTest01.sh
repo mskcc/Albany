@@ -4,7 +4,7 @@ diff='/juno/work/bic/socci/opt/bin/diff --color=auto'
 DS=$(date +%y.%m.%d)
 
 LOGFILE="log_unitTest01"_${DS}
-rm $LOGFILE
+rm -f $LOGFILE
 
 for mapfile in Targets/*_sample_mapping.txt*; do
 
