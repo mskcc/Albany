@@ -81,7 +81,7 @@ if __name__ == "__main__":
     with open(requestFile,"w") as fp:
         for rField in requestData.__dict__:
             if rField not in requestFieldsToIgnore:
-                fp.write("%s: %s\n" % (rField,getattr(requestData,rField)))
+                fp.write("%s: \"%s\"\n" % (rField,getattr(requestData,rField)))
 
     with open(mappingFile,"w") as fp:
         for sample in samples:
