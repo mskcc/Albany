@@ -58,6 +58,8 @@ if __name__ == "__main__":
     print("\n  Project No = %s" % projectNo)
 
     requestData=getRequestSamples(projectNo)
+    sampleRequestDb=dict([(x.igoSampleId,x) for x in requestData.samples])
+
     samples=[getSampleManifest(xx.igoSampleId) for xx in requestData.samples]
 
     # for sample in requestData.samples:
@@ -85,8 +87,10 @@ if __name__ == "__main__":
 
     with open(mappingFile,"w") as fp:
         for sample in samples:
-            out0=["_1","s_"+sample.investigatorSampleId]
-            for ri in getSampleMappingData(sample):
-                if ri[0]!="":
-                    out=out0+ri
-                    fp.write(("\t".join(out)+"\n"))
+            print(sample.igoId,sampleRequestDb[sample.igoId])
+            if sampleRequestDb[sample.igoId].igocomplete:
+                out0=["_1","s_"+sample.investigatorSampleId]
+                for ri in getSampleMappingData(sample):
+                    if ri[0]!="":
+                        out=out0+ri
+                        fp.write(("\t".join(out)+"\n"))

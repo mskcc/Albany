@@ -20,6 +20,12 @@ class Sample:
     #
     def __init__(self,sampleJson):
         self.__dict__=sampleJson
+    def __str__(self):
+        return "<limsETL.Sample %s %s %s>" % (
+            self.investigatorSampleId,
+            self.igoSampleId,
+            self.igocomplete
+            )
 
 class RequestSamples:
     # 'dataAccessEmails',
