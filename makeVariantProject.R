@@ -6,13 +6,38 @@ if(len(args)!=1) {
 
 source("/home/socci/Code/LIMS/LimsETL/tools.R")
 
-require(yaml)
-require(tidyverse)
+suppressPackageStartupMessages({
+    require(yaml);
+    require(tidyverse);
+})
 
 rFile=args[1]
 
 request=read_yaml(rFile)
 mapping=read_tsv(gsub("metadata.yaml","sample_mapping.txt",rFile),col_names=F,col_types=cols())
+
+if(grepl(";",request$baitsUsed)) {
+    cat("\n")
+    cat("   Multiple baitSets used; need to resolve manually\n\n")
+    cat("      ",request$baitsUsed,"\n")
+    cat("\n")
+    stop("FATAL ERROR")
+}
+
+knownAssayPaths=scan("knownTargets","")
+names(knownAssayPaths)=basename(knownAssayPaths)
+
+assay=gsub("_baits$","",request$baitsUsed,ignore.case=T)
+assayPath=knownAssayPaths[assay]
+
+if(is.na(assayPath)) {
+    cat("\n")
+    cat("   Unknown assay; need to resolve manually\n\n")
+    cat("      ",assay,"<>",request$baitsUsed,"\n")
+    cat("\n")
+    stop("FATAL ERROR")
+}
+
 
 requestVar=list(
     ProjectID=cc("Proj",request$requestId),
@@ -26,8 +51,8 @@ requestVar=list(
 
     Species = request$Species,
 
-    Assay = "NEED_TO_SPECIFY",
-    AssayPath = "FILL_OR_DELETE",
+    Assay = assay,
+    AssayPath = assayPath,
 
     PI_Name = normalizeName(request$labHeadName),
     PI = gsub("@.*$","",request$labHeadEmail),
