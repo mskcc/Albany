@@ -100,7 +100,7 @@ if __name__ == "__main__":
     requestData.Species=species
     requestData.NumberOfSamples=len(samples)
 
-    baitsUsed=set(["Testing_baits"])
+    baitsUsed=set()
 
     with open(mappingFile,"w") as fp:
         for sample in samples:
