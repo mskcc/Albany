@@ -12,6 +12,25 @@ except ModuleNotFoundError:
             return f
         return inner
 
+sampleFields="""
+investigatorSampleId
+cmoSampleName
+sampleName
+cmoPatientId
+igoId
+baitSet
+cmoSampleClass
+tumorOrNormal
+preservation
+sampleOrigin
+specimenType
+oncoTreeCode
+tissueLocation
+collectionYear
+sex
+species
+""".strip().split()
+
 def getRequestSamples(projectNo):
     return limsETL.getRequestSamples(projectNo)
 
@@ -75,22 +94,37 @@ if __name__ == "__main__":
 
     requestFile="Proj_%s_metadata.yaml" % projectNo
     mappingFile="Proj_%s_sample_mapping.txt" % projectNo
+    manifestFile="Proj_%s_metadata_samples.txt" % projectNo
 
     species=",".join(set([s.species for s in samples]))
     requestData.Species=species
     requestData.NumberOfSamples=len(samples)
 
-    with open(requestFile,"w") as fp:
-        for rField in requestData.__dict__:
-            if rField not in requestFieldsToIgnore:
-                fp.write("%s: \"%s\"\n" % (rField,getattr(requestData,rField)))
+    baitsUsed=set(["Testing_baits"])
 
     with open(mappingFile,"w") as fp:
         for sample in samples:
             print(sample.igoId,sampleRequestDb[sample.igoId])
+            baitsUsed.add(sample.baitSet)
             if sampleRequestDb[sample.igoId].igocomplete:
                 out0=["_1","s_"+sample.investigatorSampleId]
                 for ri in getSampleMappingData(sample):
                     if ri[0]!="":
                         out=out0+ri
                         fp.write(("\t".join(out)+"\n"))
+
+    print("\nBaitsUsed =",";".join(baitsUsed))
+    requestData.baitsUsed=";".join(baitsUsed)
+
+    with open(requestFile,"w") as fp:
+        for rField in requestData.__dict__:
+            if rField not in requestFieldsToIgnore:
+                fp.write("%s: \"%s\"\n" % (rField,getattr(requestData,rField)))
+
+    with open(manifestFile,"w") as fp:
+        fp.write(("\t".join(sampleFields)+"\n"))
+        for sample in samples:
+            out=[]
+            for fi in sampleFields:
+                out.append(str(sample.__dict__[fi]))
+            fp.write(("\t".join(out)+"\n"))
