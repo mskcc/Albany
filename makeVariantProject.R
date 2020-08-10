@@ -24,7 +24,7 @@ if(grepl(";",request$baitsUsed)) {
     stop("FATAL ERROR")
 }
 
-knownAssayPaths=scan("knownTargets","")
+knownAssayPaths=scan("/home/socci/Code/LIMS/LimsETL/knownTargets","")
 names(knownAssayPaths)=basename(knownAssayPaths)
 
 assay=gsub("_baits$","",request$baitsUsed,ignore.case=T)
