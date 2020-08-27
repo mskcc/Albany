@@ -9,14 +9,26 @@ if(len(args)!=1) {
 
 source("/home/socci/Code/LIMS/LimsETL/tools.R")
 
-require(yaml)
-require(tidyverse)
-require(openxlsx)
+suppressPackageStartupMessages({
+    require(yaml);
+    require(tidyverse);
+    require(openxlsx);
+})
 
 rFile=args[1]
 
-request=read_yaml(rFile)
+
 mapping=read_tsv(gsub("metadata.yaml","sample_mapping.txt",rFile),col_names=F,col_types=cols())
+
+if(nrow(mapping)==0) {
+    cat("\n")
+    cat("    Mapping file is empty; no valid samples; maybe all marked igocomplete==FALSE\n")
+    cat("\n")
+    quit()
+}
+
+request=read_yaml(rFile)
+
 
 requestRNA=list(
 
@@ -29,7 +41,7 @@ requestRNA=list(
     Recipe=request$recipe,
 
     LIMS_Strand = request$strand,
-    Strand="Reverse,None",
+    #Strand="Reverse,None",
 
     Species = request$Species,
 
