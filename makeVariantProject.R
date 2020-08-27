@@ -28,6 +28,15 @@ knownAssayPaths=scan("/home/socci/Code/LIMS/LimsETL/knownTargets","")
 names(knownAssayPaths)=basename(knownAssayPaths)
 
 assay=gsub("_baits$","",request$baitsUsed,ignore.case=T)
+
+assayTranslations=c(
+    "HemeBrainPACT_v1"="BRAINPACT_V1_b37"
+)
+
+if(assay %in% names(assayTranslations)) {
+    assay=assayTranslations[assay]
+}
+
 assayPath=knownAssayPaths[assay]
 
 if(is.na(assayPath)) {
