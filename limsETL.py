@@ -156,8 +156,15 @@ def getSampleManifest(sample_id):
                             params={"igoSampleId": sample_id},
                             auth=(settings.LIMS_USERNAME, settings.LIMS_PASSWORD), verify=False)
 
+
     if sampleMetadata.status_code != 200:
-        raise LIMSRequestException("Failed to fetch SampleManifest for sampleId:%s" % sample_id)
+        print("Failed to fetch SampleManifest for sampleId:%s STATUS=%s" %
+                (sample_id,sampleMetadata.status_code))
+        print("\n")
+
+        return None
+        #raise LIMSRequestException("Failed to fetch SampleManifest for sampleId:%s" % sample_id)
+
     try:
         data = sampleMetadata.json()[0]
     except Exception as e:
