@@ -30,7 +30,8 @@ names(knownAssayPaths)=basename(knownAssayPaths)
 assay=gsub("_baits$","",request$baitsUsed,ignore.case=T)
 
 assayTranslations=c(
-    "HemeBrainPACT_v1"="BRAINPACT_V1_b37"
+    "HemeBrainPACT_v1"="BRAINPACT_V1_b37",
+    "mm_IMPACT_v1_mm10"="M-IMPACT_v1_mm10"
 )
 
 if(assay %in% names(assayTranslations)) {
