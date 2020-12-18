@@ -79,7 +79,19 @@ if __name__ == "__main__":
     requestData=getRequestSamples(projectNo)
     sampleRequestDb=dict([(x.igoSampleId,x) for x in requestData.samples])
 
+    # print("DEBUG")
+    # requestData.samples=[x for x in requestData.samples
+    #             if x.igoSampleId=="10226_10"]
+    # print([x.igoSampleId for x in requestData.samples])
+
     samples=[getSampleManifest(xx.igoSampleId) for xx in requestData.samples]
+    samples=[x for x in samples if x!=None]
+
+    if len(samples)<1:
+        print()
+        print("All samples failed when pulling from LIMS")
+        print()
+        sys.exit()
 
     # for sample in requestData.samples:
     #     print("Pulling sample",sample.igoSampleId,"...")
