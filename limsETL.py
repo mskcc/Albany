@@ -20,12 +20,17 @@ class Sample:
     #
     def __init__(self,sampleJson):
         self.__dict__=sampleJson
+        self.json=sampleJson
     def __str__(self):
-        return "<limsETL.Sample %s %s %s>" % (
-            self.investigatorSampleId,
-            self.igoSampleId,
-            self.igocomplete
-            )
+        try:
+            return "<limsETL.Sample %s %s %s>" % (
+                self.investigatorSampleId,
+                self.igoSampleId,
+                self.igocomplete
+                )
+        except AttributeError as e:
+            print("\n\n",self.json,"\n\n")
+            raise e
 
 class RequestSamples:
     # 'dataAccessEmails',
