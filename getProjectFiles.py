@@ -117,7 +117,7 @@ if __name__ == "__main__":
     with open(mappingFile,"w") as fp:
         for sample in samples:
             print(sample.igoId,sampleRequestDb[sample.igoId])
-            if sampleRequestDb[sample.igoId].igocomplete:
+            if sampleRequestDb[sample.igoId].igoComplete:
                 baitsUsed.add(sample.baitSet)
                 out0=["_1","s_"+sample.investigatorSampleId]
                 for ri in getSampleMappingData(sample):
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     with open(manifestFile,"w") as fp:
         fp.write(("\t".join(sampleFields)+"\n"))
         for sample in samples:
-            if sampleRequestDb[sample.igoId].igocomplete:
+            if sampleRequestDb[sample.igoId].igoComplete:
                 out=[]
                 for fi in sampleFields:
                     out.append(str(sample.__dict__[fi]))

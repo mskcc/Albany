@@ -26,7 +26,7 @@ class Sample:
             return "<limsETL.Sample %s %s %s>" % (
                 self.investigatorSampleId,
                 self.igoSampleId,
-                self.igocomplete
+                self.igoComplete
                 )
         except AttributeError as e:
             print("\n\n",self.json,"\n\n")
