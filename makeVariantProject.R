@@ -31,7 +31,8 @@ assay=gsub("_baits$","",request$baitsUsed,ignore.case=T)
 
 assayTranslations=c(
     "HemeBrainPACT_v1"="BRAINPACT_V1_b37",
-    "mm_IMPACT_v1_mm10"="M-IMPACT_v1_mm10"
+    "mm_IMPACT_v1_mm10"="M-IMPACT_v1_mm10",
+    "M-IMPACT_v2"="M-IMPACT_v2_mm10"
 )
 
 if(assay %in% names(assayTranslations)) {
@@ -72,13 +73,13 @@ requestVar=list(
     Investigator = gsub("@.*$","",request$investigatorEmail),
     "Investigator_E-mail" = request$investigatorEmail,
 
-    ProjectFolder=file.path("/ifs/projects/BIC/variant",request$requestId),
+    ProjectFolder=file.path("/juno/projects/BIC/variant",request$requestId),
 
     `Charges-CCFN`="",
     `Charges-Division`="BIC",
     `Charges-ProjectNumber`=request$requestId,
     `Charges-Qty`=mapping %>% distinct(X2) %>% nrow,
-    `Charges-Service`="WES-Human-BICVariant|WES-Mouse-BICVariant|M-IMPACT"
+    `Charges-Service`="NG-M-IMPACT-02|WES-Human-BICVariant|WES-Mouse-BICVariant"
 
     )
 

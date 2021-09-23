@@ -31,7 +31,7 @@ requestChIP=list(
     Investigator = gsub("@.*$","",request$investigatorEmail),
     "Investigator_E-mail" = request$investigatorEmail,
 
-    ProjectFolder=file.path("/ifs/projects/BIC/chipseq",request$requestId),
+    ProjectFolder=file.path("/juno/projects/BIC/chipseq",request$requestId),
 
     Pipelines="ChIP-seq Mapping",
 

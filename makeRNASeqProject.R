@@ -42,6 +42,8 @@ requestRNA=list(
 
     LIMS_Strand = request$strand,
     #Strand="Reverse,None",
+    Assay="na",
+    AssayPath="na",
 
     Species = request$Species,
 
@@ -53,15 +55,16 @@ requestRNA=list(
     Investigator = gsub("@.*$","",request$investigatorEmail),
     "Investigator_E-mail" = request$investigatorEmail,
 
-    ProjectFolder=file.path("/ifs/projects/BIC/rnaseq",request$requestId),
-    DeliverTo_Name=request$investigatorName,
-    DeliverTo_Email=request$investigatorEmail,
+    ProjectFolder=file.path("/juno/projects/BIC/rnaseq",request$requestId),
+    #DeliverTo_Name=request$investigatorName,
+    #DeliverTo_Email=request$investigatorEmail,
 
     OtherContactEmails=request$otherContactEmails,
 
     Pipelines="NULL, RNASEQ_STANDARD_GENE_V1, RNASEQ_DIFFERENTIAL_GENE_V1",
 
     `Charges-CCFN`=""
+
 
     )
 
