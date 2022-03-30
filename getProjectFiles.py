@@ -14,7 +14,6 @@ except ModuleNotFoundError:
 
 sampleFields="""
 investigatorSampleId
-cmoSampleName
 sampleName
 cmoPatientId
 igoId
@@ -106,7 +105,7 @@ if __name__ == "__main__":
 
     requestFile="Proj_%s_metadata.yaml" % projectNo
     mappingFile="Proj_%s_sample_mapping.txt" % projectNo
-    manifestFile="Proj_%s_metadata_samples.txt" % projectNo
+    manifestFile="Proj_%s_metadata_samples.csv" % projectNo
 
     species=",".join(set([s.species for s in samples]))
     requestData.Species=species
@@ -115,8 +114,16 @@ if __name__ == "__main__":
     baitsUsed=set()
 
     with open(mappingFile,"w") as fp:
+        print("SampleId,IGOId,CompleteFlag")
         for sample in samples:
-            print(sample.igoId,sampleRequestDb[sample.igoId])
+
+            out1=[
+                sample.investigatorSampleId,
+                sample.igoId,
+                sampleRequestDb[sample.igoId].igoComplete
+                ]
+            print(",".join(map(str,out1)))
+
             if sampleRequestDb[sample.igoId].igoComplete:
                 baitsUsed.add(sample.baitSet)
                 out0=["_1","s_"+sample.investigatorSampleId]
@@ -134,10 +141,11 @@ if __name__ == "__main__":
                 fp.write("%s: \"%s\"\n" % (rField,getattr(requestData,rField)))
 
     with open(manifestFile,"w") as fp:
-        fp.write(("\t".join(sampleFields)+"\n"))
+        header=sampleFields+["IGOComplete"]
+        fp.write((",".join(header)+"\n"))
         for sample in samples:
-            if sampleRequestDb[sample.igoId].igoComplete:
-                out=[]
-                for fi in sampleFields:
-                    out.append(str(sample.__dict__[fi]))
-                fp.write(("\t".join(out)+"\n"))
+            out=[]
+            for fi in sampleFields:
+                out.append(str(sample.__dict__[fi]))
+            out.append(str(sampleRequestDb[sample.igoId].igoComplete))
+            fp.write((",".join(out)+"\n"))
