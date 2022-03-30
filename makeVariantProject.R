@@ -1,3 +1,5 @@
+#!/opt/common/CentOS_7/R/R-3.6.1/bin/Rscript --no-save
+
 args=commandArgs(trailing=T)
 if(len(args)!=1) {
     cat("\n    usage: makeVariantProject.R limsMetaDataFile.yaml\n\n")
@@ -32,7 +34,9 @@ assay=gsub("_baits$","",request$baitsUsed,ignore.case=T)
 assayTranslations=c(
     "HemeBrainPACT_v1"="BRAINPACT_V1_b37",
     "mm_IMPACT_v1_mm10"="M-IMPACT_v1_mm10",
-    "M-IMPACT_v2"="M-IMPACT_v2_mm10"
+    "GRCm38_M-IMPACT_v1"="M-IMPACT_v1_mm10",
+    "M-IMPACT_v2"="M-IMPACT_v2_mm10",
+    "IDT_Exome_v2_GRCh38"="IDT_Exome_v2_FP_b37"
 )
 
 if(assay %in% names(assayTranslations)) {
