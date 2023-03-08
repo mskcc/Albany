@@ -124,7 +124,7 @@ if __name__ == "__main__":
     mappingFile="Proj_%s_sample_mapping.txt" % projectNo
     manifestFile="Proj_%s_metadata_samples.csv" % projectNo
 
-    species=",".join(set([s.species for s in samples]))
+    species=",".join(set([s.species for s in samples if s.species!=".NA"]))
     requestData.Species=species
     requestData.NumberOfSamples=len(samples)
 
