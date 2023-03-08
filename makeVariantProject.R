@@ -26,33 +26,53 @@ if(grepl(";",request$baitsUsed)) {
     stop("FATAL ERROR")
 }
 
-knownAssayPaths=scan("/home/socci/Code/LIMS/LimsETL/knownTargets","")
-names(knownAssayPaths)=basename(knownAssayPaths)
+if(request$baitsUsed!="null") {
 
-assay=gsub("_baits$","",request$baitsUsed,ignore.case=T)
+    knownAssayPaths=scan("/home/socci/Code/LIMS/LimsETL/knownTargets","")
+    names(knownAssayPaths)=basename(knownAssayPaths)
 
-assayTranslations=c(
-    "HemeBrainPACT_v1"="BRAINPACT_V1_b37",
-    "mm_IMPACT_v1_mm10"="M-IMPACT_v1_mm10",
-    "GRCm38_M-IMPACT_v1"="M-IMPACT_v1_mm10",
-    "M-IMPACT_v2"="M-IMPACT_v2_mm10",
-    "IDT_Exome_v2_GRCh38"="IDT_Exome_v2_FP_b37"
-)
+    assay=gsub("_baits$","",request$baitsUsed,ignore.case=T)
 
-if(assay %in% names(assayTranslations)) {
-    assay=assayTranslations[assay]
+    assayTranslations=c(
+        "HemeBrainPACT_v1"="BRAINPACT_V1_b37",
+        "mm_IMPACT_v1_mm10"="M-IMPACT_v1_mm10",
+        "GRCm38_M-IMPACT_v1"="M-IMPACT_v1_mm10",
+        "M-IMPACT_v2"="M-IMPACT_v2_mm10",
+        "IDT_Exome_v2_GRCh38"="IDT_Exome_v2_FP_b37",
+        "IDT_Exome_v2_FP"="IDT_Exome_v2_FP_b37",
+        "IMPACT505_BAITS"="IMPACT505_b37",
+        "IMPACT505"="IMPACT505_b37",
+        "IMPACT410"="IMPACT410_b37"
+    )
+
+    if(assay %in% names(assayTranslations)) {
+        assay=assayTranslations[assay]
+    }
+
+    assayPath=knownAssayPaths[assay]
+
+    if(is.na(assayPath)) {
+        cat("\n")
+        cat("   Unknown assay; need to resolve manually\n\n")
+        cat("      ",assay,"<>",request$baitsUsed,"\n")
+        cat("\n")
+        stop("FATAL ERROR")
+    }
+
+} else {
+    cat("\n\tNo bait set specified\n")
+    cat("\tUsing",request$Species,"wgs target files\n\n")
+    if(request$Species=="Human") {
+        assay="wgs_b37"
+        assayPath="/juno/projects/BIC/targets/designs/wgs_b37"
+    } else if(request$Species=="Mouse") {
+        assay="wgs_mm10/juno/projects/BIC/targets/designs/wgs_mm10"
+        assayPath=""
+    } else {
+        stop("ERROR: Unknown Species")
+    }
+
 }
-
-assayPath=knownAssayPaths[assay]
-
-if(is.na(assayPath)) {
-    cat("\n")
-    cat("   Unknown assay; need to resolve manually\n\n")
-    cat("      ",assay,"<>",request$baitsUsed,"\n")
-    cat("\n")
-    stop("FATAL ERROR")
-}
-
 
 requestVar=list(
     ProjectID=cc("Proj",request$requestId),
@@ -91,4 +111,11 @@ requestVar=list(
 yy=as.yaml(requestVar)
 yy=gsub("'","",yy)
 write(yy,"_request")
+
+mapping %>%
+    distinct(X2) %>%
+    mutate(Group=sprintf("Group_%02d",row_number())) %>%
+    write_tsv(gsub("metadata.yaml","sample_grouping.txt",rFile),col_names=F)
+
+
 

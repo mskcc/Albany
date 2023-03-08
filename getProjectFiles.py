@@ -12,6 +12,10 @@ except ModuleNotFoundError:
             return f
         return inner
 
+#
+# Remove [cmoSampleName] 2022-03-30
+#
+
 sampleFields="""
 investigatorSampleId
 sampleName
