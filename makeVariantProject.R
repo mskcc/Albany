@@ -42,7 +42,8 @@ if(request$baitsUsed!="null") {
         "IDT_Exome_v2_FP"="IDT_Exome_v2_FP_b37",
         "IMPACT505_BAITS"="IMPACT505_b37",
         "IMPACT505"="IMPACT505_b37",
-        "IMPACT410"="IMPACT410_b37"
+        "IMPACT410"="IMPACT410_b37",
+    	"Twist_mWES"="Twist_mWES_mm10"
     )
 
     if(assay %in% names(assayTranslations)) {
@@ -66,8 +67,11 @@ if(request$baitsUsed!="null") {
         assay="wgs_b37"
         assayPath="/juno/projects/BIC/targets/designs/wgs_b37"
     } else if(request$Species=="Mouse") {
-        assay="wgs_mm10/juno/projects/BIC/targets/designs/wgs_mm10"
-        assayPath=""
+        assay="wgs_mm10"
+        assayPath="/juno/projects/BIC/targets/designs/wgs_mm10"
+    } else if(request$Species=="Pig") {
+        assay="wgs_Sscrofa11.1"
+        assayPath="/juno/projects/BIC/targets/designs/wgs_Sscrofa11.1"
     } else {
         stop("ERROR: Unknown Species")
     }
