@@ -1,5 +1,8 @@
 #!/opt/common/CentOS_7/R/R-3.6.1/bin/Rscript --no-save
 
+len<-function(x){length(x)}
+cc <- function(...) {paste(...,sep='_')}
+
 args=commandArgs(trailing=T)
 if(len(args)!=1) {
     cat("\n    usage: makeVariantProject.R limsMetaDataFile.yaml\n\n")
@@ -121,5 +124,15 @@ mapping %>%
     mutate(Group=sprintf("Group_%02d",row_number())) %>%
     write_tsv(gsub("metadata.yaml","sample_grouping.txt",rFile),col_names=F)
 
+sampleMeta=read_csv(gsub(".yaml","_samples.csv",rFile)) %>%
+    mutate(SID=cc("s",investigatorSampleId)) %>%
+    select(SID,PID=cmoPatientId,Class=tumorOrNormal) %>%
+    arrange(PID,Class)
+
+normals=sampleMeta %>% filter(Class=="Normal") %>% select(PID,Normal=SID)
+tumors=sampleMeta %>% filter(Class!="Normal") %>% select(PID,Tumor=SID)
+pairing=tumors %>% left_join(normals) %>% select(Normal,Tumor) %>% arrange(Normal)
+
+openxlsx::write.xlsx(pairing,gsub("metadata.yaml","sample_grouping.xlsx",rFile))
 
 
