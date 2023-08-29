@@ -133,6 +133,9 @@ normals=sampleMeta %>% filter(Class=="Normal") %>% select(PID,Normal=SID)
 tumors=sampleMeta %>% filter(Class!="Normal") %>% select(PID,Tumor=SID)
 pairing=tumors %>% left_join(normals) %>% select(Normal,Tumor) %>% arrange(Normal)
 
-openxlsx::write.xlsx(pairing,gsub("metadata.yaml","sample_grouping.xlsx",rFile))
+#
+# Write pairing file
+#
+openxlsx::write.xlsx(pairing,gsub("metadata.yaml","sample_pairing.xlsx",rFile))
 
 
