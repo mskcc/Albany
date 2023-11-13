@@ -125,6 +125,7 @@ mapping %>%
     write_tsv(gsub("metadata.yaml","sample_grouping.txt",rFile),col_names=F)
 
 sampleMeta=read_csv(gsub(".yaml","_samples.csv",rFile)) %>%
+    filter(IGOComplete) %>%
     mutate(SID=cc("s",investigatorSampleId)) %>%
     select(SID,PID=cmoPatientId,Class=tumorOrNormal) %>%
     arrange(PID,Class)
