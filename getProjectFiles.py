@@ -88,9 +88,12 @@ def getSampleMappingData(sampleObj):
 if __name__ == "__main__":
 
     import sys
+    import re
 
     projectNo=sys.argv[1]
-    print("\n  Project No = %s" % projectNo)
+    print("\nProject No = %s" % projectNo)
+
+    igoIdRegEx=re.compile("^"+projectNo+"_\d+$")
 
     requestData=getRequestSamples(projectNo)
     sampleRequestDb=dict([(x.igoSampleId,x) for x in requestData.samples])
@@ -98,9 +101,21 @@ if __name__ == "__main__":
     # print("DEBUG")
     # requestData.samples=[x for x in requestData.samples
     #             if x.igoSampleId=="10226_10"]
-    # print([x.igoSampleId for x in requestData.samples])
+    #print([x.igoSampleId for x in requestData.samples])
 
-    samples=[getSampleManifest(xx.igoSampleId) for xx in requestData.samples]
+    samples=[]
+    for si in requestData.samples:
+
+        matchIgoPattern=re.match(igoIdRegEx,si.igoSampleId)
+
+        if matchIgoPattern!=None:
+            sampleManifest=getSampleManifest(si.igoSampleId)
+            samples.append(sampleManifest)
+        else:
+            print(f"\nInvalid igoId={si.igoSampleId}")
+
+
+    #samples=[getSampleManifest(xx.igoSampleId) for xx in requestData.samples]
     samples=[x for x in samples if x!=None]
 
     if len(samples)<1:
@@ -108,6 +123,8 @@ if __name__ == "__main__":
         print("All samples failed when pulling from LIMS")
         print()
         sys.exit()
+
+    print()
 
     # for sample in requestData.samples:
     #     print("Pulling sample",sample.igoSampleId,"...")

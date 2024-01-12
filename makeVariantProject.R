@@ -19,7 +19,8 @@ suppressPackageStartupMessages({
 rFile=args[1]
 
 request=read_yaml(rFile)
-mapping=read_tsv(gsub("metadata.yaml","sample_mapping.txt",rFile),col_names=F,col_types=cols())
+mappingFile=gsub("metadata.yaml","sample_mapping.txt",rFile)
+mapping=read_tsv(mappingFile,col_names=F,col_types=cols())
 
 if(grepl(";",request$baitsUsed)) {
     cat("\n")
@@ -46,7 +47,8 @@ if(request$baitsUsed!="null") {
         "IMPACT505_BAITS"="IMPACT505_b37",
         "IMPACT505"="IMPACT505_b37",
         "IMPACT410"="IMPACT410_b37",
-    	"Twist_mWES"="Twist_mWES_mm10"
+    	"Twist_mWES"="Twist_mWES_mm10",
+        "Ganesh_ZFP36_Expanded"="Ganesh_ZFP36_Expanded_b37"
     )
 
     if(assay %in% names(assayTranslations)) {
@@ -119,24 +121,35 @@ yy=as.yaml(requestVar)
 yy=gsub("'","",yy)
 write(yy,"_request")
 
+#
+# Check assay and update as needed
+# For M-IMPACT add pooled normal
+#
+
+if(requestVar$Assay=="M-IMPACT_v2_mm10") {
+    mostRecentPool=sort(fs::dir_ls("../zz_M_IMPACT_Pools",regex="zz_M-IMPACT__POOLEDNORMAL__"),decreasing=T)[1]
+    mapPool=read_tsv(mostRecentPool,col_names=F)
+    mapping=bind_rows(mapping,mapPool)
+    fs::file_move(mappingFile,paste0(mappingFile,".orig"))
+    write_tsv(mapping,mappingFile,col_names=F)
+}
+
 mapping %>%
     distinct(X2) %>%
     mutate(Group=sprintf("Group_%02d",row_number())) %>%
     write_tsv(gsub("metadata.yaml","sample_grouping.txt",rFile),col_names=F)
 
-sampleMeta=read_csv(gsub(".yaml","_samples.csv",rFile)) %>%
+sampleMeta=read_csv(gsub(".yaml","_samples.csv",rFile),show_col_types=F) %>%
     filter(IGOComplete) %>%
     mutate(SID=cc("s",investigatorSampleId)) %>%
     select(SID,PID=cmoPatientId,Class=tumorOrNormal) %>%
     arrange(PID,Class)
 
-normals=sampleMeta %>% filter(Class=="Normal") %>% select(PID,Normal=SID)
-tumors=sampleMeta %>% filter(Class!="Normal") %>% select(PID,Tumor=SID)
-pairing=tumors %>% left_join(normals) %>% select(Normal,Tumor) %>% arrange(Normal)
+# normals=sampleMeta %>% filter(Class=="Normal") %>% select(PID,Normal=SID)
+# tumors=sampleMeta %>% filter(Class!="Normal") %>% select(PID,Tumor=SID)
+# pairing=tumors %>% left_join(normals) %>% select(Normal,Tumor) %>% arrange(Normal)
 
 #
-# Write pairing file
+# Write pairing manifest
 #
-openxlsx::write.xlsx(pairing,gsub("metadata.yaml","sample_pairing.xlsx",rFile))
-
-
+openxlsx::write.xlsx(list(metadata=sampleMeta),gsub("metadata.yaml","pairing_manifest.xlsx",rFile))
