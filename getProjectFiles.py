@@ -12,6 +12,10 @@ except ModuleNotFoundError:
             return f
         return inner
 
+#
+# Remove [cmoSampleName] 2022-03-30
+#
+
 sampleFields="""
 investigatorSampleId
 sampleName
@@ -36,7 +40,20 @@ def getRequestSamples(projectNo):
 @cachier(cache_dir='./__cache__',stale_after=datetime.timedelta(days=1))
 def getSampleManifest(sampleId):
     print("Pulling sample",sampleId,"...",end="")
-    sampleManifest=limsETL.getSampleManifest(sampleId)
+    try:
+        sampleManifest=limsETL.getSampleManifest(sampleId)
+    except:
+        print("\n")
+        print("   Invalid Sample ID",sampleId)
+        print("   Creating NULL record\n")
+        nullSample=dict(
+            libraries=[],
+            species=".NA",
+            investigatorSampleId=".NA",
+            igoId=sampleId
+            )
+        sampleManifest=limsETL.SampleManifest(nullSample)
+
     print(" done")
     return sampleManifest
 
@@ -107,7 +124,7 @@ if __name__ == "__main__":
     mappingFile="Proj_%s_sample_mapping.txt" % projectNo
     manifestFile="Proj_%s_metadata_samples.csv" % projectNo
 
-    species=",".join(set([s.species for s in samples]))
+    species=",".join(set([s.species for s in samples if s.species!=".NA"]))
     requestData.Species=species
     requestData.NumberOfSamples=len(samples)
 
@@ -144,6 +161,8 @@ if __name__ == "__main__":
         header=sampleFields+["IGOComplete"]
         fp.write((",".join(header)+"\n"))
         for sample in samples:
+            if sample.investigatorSampleId==".NA":
+                continue
             out=[]
             for fi in sampleFields:
                 out.append(str(sample.__dict__[fi]))
