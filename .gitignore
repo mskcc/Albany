@@ -6,3 +6,4 @@ Proj_*
 __cache__
 *.netrc
 SwaggerURL
+._*
