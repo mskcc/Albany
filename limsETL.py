@@ -1,4 +1,10 @@
-from conf import settings
+import sys
+try:
+    from conf import settings
+except ImportError as e:
+    print("\n\tNeed to setup the conf.py module with credentials\n")
+    sys.exit()
+
 import requests
 import os
 import urllib3
