@@ -13,6 +13,13 @@ except ModuleNotFoundError:
         return inner
 
 #
+# FASTQ folder ROOTS
+#
+
+JUNO_ROOT="/igo/delivery/FASTQ/"
+IRIS_ROOT="/ifs/datadelivery/igo_core/FASTQ/"
+
+#
 # Remove [cmoSampleName] 2022-03-30
 #
 
@@ -82,7 +89,6 @@ def getSampleMappingData(sampleObj):
                         )
                 )
 
-
     return(sampleMappingData)
 
 if __name__ == "__main__":
@@ -91,8 +97,11 @@ if __name__ == "__main__":
     import re
     import os
 
+    ZONE=limsETL.get_zone_from_env()
+    print(f"{ZONE=}")
+
     projectNo=sys.argv[1]
-    print("\nProject No = %s" % projectNo)
+    print(f"\n{projectNo=}")
 
     igoIdRegEx=re.compile("^"+projectNo+"_\d+$")
 
@@ -181,8 +190,10 @@ if __name__ == "__main__":
                 out0=["_1",sample.investigatorSampleId]
                 for ri in sampleMapData:
                     if ri[0]!="":
-                        out=out0+ri
-                        fp.write(("\t".join(map(str,out))+"\n"))
+                      if ZONE=="IRIS":
+                        ri[1]=ri[1].replace(JUNO_ROOT,IRIS_ROOT)
+                      out=out0+ri
+                      fp.write(("\t".join(map(str,out))+"\n"))
 
     requestData.baitsUsed=";".join([str(x) for x in baitsUsed])
     print("\nBaitsUsed =",requestData.baitsUsed)
