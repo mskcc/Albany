@@ -88,9 +88,13 @@ def getSampleMappingData(sampleObj):
 if __name__ == "__main__":
 
     import sys
+    import re
+    import os
 
     projectNo=sys.argv[1]
-    print("\n  Project No = %s" % projectNo)
+    print("\nProject No = %s" % projectNo)
+
+    igoIdRegEx=re.compile("^"+projectNo+"_\d+$")
 
     requestData=getRequestSamples(projectNo)
     sampleRequestDb=dict([(x.igoSampleId,x) for x in requestData.samples])
@@ -98,9 +102,21 @@ if __name__ == "__main__":
     # print("DEBUG")
     # requestData.samples=[x for x in requestData.samples
     #             if x.igoSampleId=="10226_10"]
-    # print([x.igoSampleId for x in requestData.samples])
+    #print([x.igoSampleId for x in requestData.samples])
 
-    samples=[getSampleManifest(xx.igoSampleId) for xx in requestData.samples]
+    samples=[]
+    for si in requestData.samples:
+
+        matchIgoPattern=re.match(igoIdRegEx,si.igoSampleId)
+
+        if matchIgoPattern!=None:
+            sampleManifest=getSampleManifest(si.igoSampleId)
+            samples.append(sampleManifest)
+        else:
+            print(f"\nInvalid igoId={si.igoSampleId}")
+
+
+    #samples=[getSampleManifest(xx.igoSampleId) for xx in requestData.samples]
     samples=[x for x in samples if x!=None]
 
     if len(samples)<1:
@@ -108,6 +124,8 @@ if __name__ == "__main__":
         print("All samples failed when pulling from LIMS")
         print()
         sys.exit()
+
+    print()
 
     # for sample in requestData.samples:
     #     print("Pulling sample",sample.igoSampleId,"...")
@@ -124,7 +142,11 @@ if __name__ == "__main__":
     mappingFile="Proj_%s_sample_mapping.txt" % projectNo
     manifestFile="Proj_%s_metadata_samples.csv" % projectNo
 
-    species=",".join(set([s.species for s in samples if s.species!=".NA"]))
+    # for s in samples:
+    #     print(getSampleMappingData(s))
+    # sys.exit(0)
+
+    species=",".join(set([s.species for s in samples if s.species is not None and s.species!=".NA"]))
     requestData.Species=species
     requestData.NumberOfSamples=len(samples)
 
@@ -142,12 +164,25 @@ if __name__ == "__main__":
             print(",".join(map(str,out1)))
 
             if sampleRequestDb[sample.igoId].igoComplete:
-                baitsUsed.add(sample.baitSet)
-                out0=["_1","s_"+sample.investigatorSampleId]
-                for ri in getSampleMappingData(sample):
+
+                if sample.baitSet is not None:
+                    baitsUsed.add(sample.baitSet)
+
+                sampleMapData=getSampleMappingData(sample)
+
+                if sample.investigatorSampleId is None:
+                    sampleId=os.path.basename(sampleMapData[0][1])
+                    sampleId=sampleId.replace("Sample_","")
+                    pos=sampleId.find("_IGO_")
+                    if pos >= 0:
+                        sampleId=sampleId[:pos]
+                    sample.investigatorSampleId=sampleId
+
+                out0=["_1",sample.investigatorSampleId]
+                for ri in sampleMapData:
                     if ri[0]!="":
                         out=out0+ri
-                        fp.write(("\t".join(out)+"\n"))
+                        fp.write(("\t".join(map(str,out))+"\n"))
 
     requestData.baitsUsed=";".join([str(x) for x in baitsUsed])
     print("\nBaitsUsed =",requestData.baitsUsed)
