@@ -89,6 +89,7 @@ if __name__ == "__main__":
 
     import sys
     import re
+    import os
 
     projectNo=sys.argv[1]
     print("\nProject No = %s" % projectNo)
@@ -141,7 +142,11 @@ if __name__ == "__main__":
     mappingFile="Proj_%s_sample_mapping.txt" % projectNo
     manifestFile="Proj_%s_metadata_samples.csv" % projectNo
 
-    species=",".join(set([s.species for s in samples if s.species!=".NA"]))
+    # for s in samples:
+    #     print(getSampleMappingData(s))
+    # sys.exit(0)
+
+    species=",".join(set([s.species for s in samples if s.species is not None and s.species!=".NA"]))
     requestData.Species=species
     requestData.NumberOfSamples=len(samples)
 
@@ -159,12 +164,25 @@ if __name__ == "__main__":
             print(",".join(map(str,out1)))
 
             if sampleRequestDb[sample.igoId].igoComplete:
-                baitsUsed.add(sample.baitSet)
-                out0=["_1","s_"+sample.investigatorSampleId]
-                for ri in getSampleMappingData(sample):
+
+                if sample.baitSet is not None:
+                    baitsUsed.add(sample.baitSet)
+
+                sampleMapData=getSampleMappingData(sample)
+
+                if sample.investigatorSampleId is None:
+                    sampleId=os.path.basename(sampleMapData[0][1])
+                    sampleId=sampleId.replace("Sample_","")
+                    pos=sampleId.find("_IGO_")
+                    if pos >= 0:
+                        sampleId=sampleId[:pos]
+                    sample.investigatorSampleId=sampleId
+
+                out0=["_1",sample.investigatorSampleId]
+                for ri in sampleMapData:
                     if ri[0]!="":
                         out=out0+ri
-                        fp.write(("\t".join(out)+"\n"))
+                        fp.write(("\t".join(map(str,out))+"\n"))
 
     requestData.baitsUsed=";".join([str(x) for x in baitsUsed])
     print("\nBaitsUsed =",requestData.baitsUsed)
