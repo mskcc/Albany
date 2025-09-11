@@ -9,6 +9,20 @@ import requests
 import os
 import urllib3
 urllib3.disable_warnings()
+import re
+
+def get_zone_from_env():
+    cdc_joined_zone = os.environ.get("CDC_JOINED_ZONE")
+
+    if cdc_joined_zone is None:
+        return "_UNKNOWN_ZONE"
+
+    match = re.search(r'CN=([^,]+),', cdc_joined_zone)
+
+    if match:
+        return match.group(1)
+    else:
+        return "_UNKNOWN_ZONE"
 
 class ETLExceptions(Exception):
     code = None
