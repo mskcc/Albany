@@ -190,7 +190,7 @@ if __name__ == "__main__":
                 out0=["_1",sample.investigatorSampleId]
                 for ri in sampleMapData:
                     if ri[0]!="":
-                      if ZONE=="IRIS":
+                      if ZONE.startswith("IRIS"):
                         ri[1]=ri[1].replace(JUNO_ROOT,IRIS_ROOT)
                       out=out0+ri
                       fp.write(("\t".join(map(str,out))+"\n"))
