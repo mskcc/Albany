@@ -17,7 +17,8 @@ except ModuleNotFoundError:
 #
 
 JUNO_ROOT="/igo/delivery/FASTQ/"
-IRIS_ROOT="/ifs/datadelivery/igo_core/FASTQ/"
+#IRIS_ROOT="/ifs/datadelivery/igo_core/FASTQ/"
+IRIS_ROOT="/data1/test01/bic/CACHE/ifs/datadelivery/igo_core/FASTQ/"
 
 #
 # Remove [cmoSampleName] 2022-03-30
