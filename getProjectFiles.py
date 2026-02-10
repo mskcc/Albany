@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Extract project metadata from IGO LIMS and generate standardized project files."""
 
+import argparse
 import datetime
 import os
 import re
@@ -235,12 +236,75 @@ def write_manifest_file(
             fp.write(",".join(row) + "\n")
 
 
+PROJ_DIR_PATTERN = re.compile(r".*/Proj_([^/]+)/")
+
+
+def project_no_from_cwd() -> str:
+    """Extract project number from current working directory.
+
+    Matches the pattern .*/Proj_<ID>/ in the cwd path.
+
+    Returns:
+        Project number string.
+
+    Raises:
+        SystemExit: If cwd does not match the expected pattern.
+    """
+    match = PROJ_DIR_PATTERN.match(os.getcwd() + "/")
+    if not match:
+        print(f"Error: could not extract project number from cwd: {os.getcwd()}")
+        print("Expected path containing Proj_<ID>/ directory")
+        sys.exit(1)
+    return match.group(1)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse command-line arguments.
+
+    Args:
+        argv: Argument list (defaults to sys.argv[1:]).
+
+    Returns:
+        Parsed namespace with project_no attribute.
+    """
+    parser = argparse.ArgumentParser(
+        description="Extract project metadata from IGO LIMS and generate "
+        "standardized project files for BIC analysis pipelines.",
+        epilog="Output files: Proj_<ID>_metadata.yaml, "
+        "Proj_<ID>_sample_mapping.txt, Proj_<ID>_metadata_samples.csv",
+    )
+    parser.add_argument(
+        "project_no",
+        metavar="PROJECT_NUMBER",
+        nargs="?",
+        help="IGO project number (e.g., 12345)",
+    )
+    parser.add_argument(
+        "-d",
+        action="store_true",
+        help="derive project number from current working directory "
+        "(expects Proj_<ID>/ in path)",
+    )
+    args = parser.parse_args(argv)
+
+    if args.d and args.project_no:
+        parser.error("-d and PROJECT_NUMBER are mutually exclusive")
+    if args.d:
+        args.project_no = project_no_from_cwd()
+    if not args.project_no:
+        parser.error("PROJECT_NUMBER is required (or use -d)")
+
+    return args
+
+
 def main() -> None:
     """Main entry point: extract LIMS data and generate project files."""
+    args = parse_args()
+
     zone = limsETL.get_zone_from_env()
     print(f"{zone=}")
 
-    project_no = sys.argv[1]
+    project_no = args.project_no
     print(f"\n{project_no=}")
 
     igo_id_pattern = re.compile(rf"^{project_no}_\d+$")
