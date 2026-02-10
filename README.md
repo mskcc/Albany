@@ -1,6 +1,6 @@
 # Albany
 
-## Version 2.0.1
+## Version 2.1.0
 
 LimsETL is a bioinformatics data extraction and processing pipeline that interfaces with IGO LIMS (Laboratory Information Management System) to retrieve genomic project metadata and generate standardized project files for downstream analysis pipelines.
 

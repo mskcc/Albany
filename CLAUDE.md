@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LimsETL (v2.0.1) extracts genomic project metadata from IGO LIMS via REST API and generates standardized project files for BIC analysis pipelines (variant calling, RNA-seq, ChIP-seq).
+LimsETL (v2.1.0) extracts genomic project metadata from IGO LIMS via REST API and generates standardized project files for BIC analysis pipelines (variant calling, RNA-seq, ChIP-seq).
 
 ## Architecture
 
