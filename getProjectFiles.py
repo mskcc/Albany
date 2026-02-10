@@ -1,217 +1,291 @@
 #!/usr/bin/env python3
+"""Extract project metadata from IGO LIMS and generate standardized project files."""
 
-import limsETL
 import datetime
+import os
+import re
+import sys
 
 try:
     from cachier import cachier
 except ModuleNotFoundError:
     print("No Cachier Module so no cacheing")
-    def cachier(*args,**kwargs):
+
+    def cachier(*args, **kwargs):
         def inner(f):
             return f
+
         return inner
 
-#
-# FASTQ folder ROOTS
-#
 
-JUNO_ROOT="/igo/delivery/FASTQ/"
-#IRIS_ROOT="/ifs/datadelivery/igo_core/FASTQ/"
-IRIS_ROOT="/data1/test01/bic/CACHE/ifs/datadelivery/igo_core/FASTQ/"
+import limsETL
 
-#
-# Remove [cmoSampleName] 2022-03-30
-#
+# FASTQ folder roots by compute zone
+JUNO_ROOT = "/igo/delivery/FASTQ/"
+IRIS_ROOT = "/data1/test01/bic/CACHE/ifs/datadelivery/igo_core/FASTQ/"
 
-sampleFields="""
-investigatorSampleId
-sampleName
-cmoPatientId
-igoId
-baitSet
-cmoSampleClass
-tumorOrNormal
-preservation
-sampleOrigin
-specimenType
-oncoTreeCode
-tissueLocation
-collectionYear
-sex
-species
-""".strip().split()
+SAMPLE_FIELDS = [
+    "investigatorSampleId",
+    "sampleName",
+    "cmoPatientId",
+    "igoId",
+    "baitSet",
+    "cmoSampleClass",
+    "tumorOrNormal",
+    "preservation",
+    "sampleOrigin",
+    "specimenType",
+    "oncoTreeCode",
+    "tissueLocation",
+    "collectionYear",
+    "sex",
+    "species",
+]
 
-def getRequestSamples(projectNo):
-    return limsETL.getRequestSamples(projectNo)
+MISSING_SAMPLE_MESSAGE = """
+No FASTQ files for:
+            igoId: {igo_id}
+       sampleName: {sample_name}
+   investSampleId: {invest_sample_id}
+"""
 
-@cachier(cache_dir='./__cache__',stale_after=datetime.timedelta(days=1))
-def getSampleManifest(sampleId):
-    print("Pulling sample",sampleId,"...",end="")
+
+def get_request_samples(project_no: str) -> limsETL.RequestSamples:
+    """Fetch request samples from LIMS for a project.
+
+    Args:
+        project_no: IGO project number.
+
+    Returns:
+        RequestSamples object with sample data.
+    """
+    return limsETL.getRequestSamples(project_no)
+
+
+@cachier(cache_dir="./__cache__", stale_after=datetime.timedelta(days=1))
+def get_sample_manifest(sample_id: str) -> limsETL.SampleManifest:
+    """Fetch sample manifest from LIMS, creating a null record on failure.
+
+    Args:
+        sample_id: IGO sample ID.
+
+    Returns:
+        SampleManifest object (may be null record if fetch failed).
+    """
+    print(f"Pulling sample {sample_id} ...", end="")
     try:
-        sampleManifest=limsETL.getSampleManifest(sampleId)
-    except:
-        print("\n")
-        print("   Invalid Sample ID",sampleId)
+        sample_manifest = limsETL.getSampleManifest(sample_id)
+    except Exception:
+        print(f"\n   Invalid Sample ID {sample_id}")
         print("   Creating NULL record\n")
-        nullSample=dict(
+        null_sample = dict(
             libraries=[],
             species=".NA",
             investigatorSampleId=".NA",
-            igoId=sampleId
-            )
-        sampleManifest=limsETL.SampleManifest(nullSample)
+            igoId=sample_id,
+        )
+        sample_manifest = limsETL.SampleManifest(null_sample)
 
     print(" done")
-    return sampleManifest
+    return sample_manifest
 
-missingSampleMessage="""
-No FASTQ files for:
-            igoId: %s
-       sampleName: %s
-   investSampleId: %s
-"""
 
-@cachier(cache_dir='./__cache__',stale_after=datetime.timedelta(days=1))
-def getSampleMappingData(sampleObj):
-    sampleMappingData=[]
-    for lib in sampleObj.libraries:
-        for runs in lib.runs:
-            if runs.machineRuns != None:
-                for runIds in runs.machineRuns:
-                    mRun=runs.machineRuns[runIds]
-                    sampleMappingData.append([runIds,mRun.fastqDir,mRun.runType])
+@cachier(cache_dir="./__cache__", stale_after=datetime.timedelta(days=1))
+def get_sample_mapping_data(
+    sample_obj: limsETL.SampleManifest,
+) -> list[list]:
+    """Extract run ID, FASTQ directory, and run type for each machine run.
+
+    Args:
+        sample_obj: SampleManifest with library and run information.
+
+    Returns:
+        List of [run_id, fastq_dir, run_type] entries.
+    """
+    mapping_data = []
+    for lib in sample_obj.libraries:
+        for run in lib.runs:
+            if run.machineRuns is not None:
+                for run_id, machine_run in run.machineRuns.items():
+                    mapping_data.append(
+                        [run_id, machine_run.fastqDir, machine_run.runType]
+                    )
             else:
-
-                print(missingSampleMessage % (
-                        sampleObj.igoId,
-                        sampleObj.sampleName,
-                        sampleObj.investigatorSampleId
-                        )
+                print(
+                    MISSING_SAMPLE_MESSAGE.format(
+                        igo_id=sample_obj.igoId,
+                        sample_name=sample_obj.sampleName,
+                        invest_sample_id=sample_obj.investigatorSampleId,
+                    )
                 )
 
-    return(sampleMappingData)
+    return mapping_data
 
-if __name__ == "__main__":
 
-    import sys
-    import re
-    import os
+def derive_sample_id_from_fastq(fastq_dir: str) -> str:
+    """Derive investigatorSampleId from FASTQ directory path.
 
-    ZONE=limsETL.get_zone_from_env()
-    print(f"{ZONE=}")
+    Strips 'Sample_' prefix and '_IGO_' suffix from the directory basename.
 
-    projectNo=sys.argv[1]
-    print(f"\n{projectNo=}")
+    Args:
+        fastq_dir: Path to FASTQ directory.
 
-    igoIdRegEx=re.compile("^"+projectNo+"_\d+$")
+    Returns:
+        Derived sample ID string.
+    """
+    sample_id = os.path.basename(fastq_dir).replace("Sample_", "")
+    pos = sample_id.find("_IGO_")
+    if pos >= 0:
+        sample_id = sample_id[:pos]
+    return sample_id
 
-    requestData=getRequestSamples(projectNo)
-    sampleRequestDb=dict([(x.igoSampleId,x) for x in requestData.samples])
 
-    # print("DEBUG")
-    # requestData.samples=[x for x in requestData.samples
-    #             if x.igoSampleId=="10226_10"]
-    #print([x.igoSampleId for x in requestData.samples])
+def write_mapping_file(
+    mapping_path: str,
+    samples: list[limsETL.SampleManifest],
+    sample_request_db: dict,
+    zone: str,
+) -> set[str]:
+    """Write sample-to-FASTQ mapping file and collect bait sets.
 
-    samples=[]
-    for si in requestData.samples:
+    Args:
+        mapping_path: Output file path for mapping TSV.
+        samples: List of SampleManifest objects.
+        sample_request_db: Dict mapping IGO ID to Sample request objects.
+        zone: Compute zone string (e.g., "IRIS_01", "JUNO_01").
 
-        matchIgoPattern=re.match(igoIdRegEx,si.igoSampleId)
+    Returns:
+        Set of bait set names used across completed samples.
+    """
+    baits_used = set()
 
-        if matchIgoPattern!=None:
-            sampleManifest=getSampleManifest(si.igoSampleId)
-            samples.append(sampleManifest)
+    with open(mapping_path, "w") as fp:
+        print("SampleId,IGOId,CompleteFlag")
+        for sample in samples:
+            request_info = sample_request_db[sample.igoId]
+            summary = [
+                sample.investigatorSampleId,
+                sample.igoId,
+                request_info.igoComplete,
+            ]
+            print(",".join(map(str, summary)))
+
+            if not request_info.igoComplete:
+                continue
+
+            if sample.baitSet is not None:
+                baits_used.add(sample.baitSet)
+
+            sample_map_data = get_sample_mapping_data(sample)
+
+            if sample.investigatorSampleId is None:
+                sample.investigatorSampleId = derive_sample_id_from_fastq(
+                    sample_map_data[0][1]
+                )
+
+            prefix = ["_1", sample.investigatorSampleId]
+            for run_id, fastq_dir, run_type in sample_map_data:
+                if run_id == "":
+                    continue
+                if zone.startswith("IRIS"):
+                    fastq_dir = fastq_dir.replace(JUNO_ROOT, IRIS_ROOT)
+                row = prefix + [run_id, fastq_dir, run_type]
+                fp.write("\t".join(map(str, row)) + "\n")
+
+    return baits_used
+
+
+def write_request_file(
+    request_path: str,
+    request_data: limsETL.RequestSamples,
+) -> None:
+    """Write request-level metadata as YAML.
+
+    Args:
+        request_path: Output file path.
+        request_data: RequestSamples object with project metadata.
+    """
+    fields_to_ignore = {"samples", "pooledNormals"}
+    with open(request_path, "w") as fp:
+        for field in request_data.__dict__:
+            if field not in fields_to_ignore:
+                fp.write(f'{field}: "{getattr(request_data, field)}"\n')
+
+
+def write_manifest_file(
+    manifest_path: str,
+    samples: list[limsETL.SampleManifest],
+    sample_request_db: dict,
+) -> None:
+    """Write sample metadata CSV file.
+
+    Args:
+        manifest_path: Output file path.
+        samples: List of SampleManifest objects.
+        sample_request_db: Dict mapping IGO ID to Sample request objects.
+    """
+    header = SAMPLE_FIELDS + ["IGOComplete"]
+    with open(manifest_path, "w") as fp:
+        fp.write(",".join(header) + "\n")
+        for sample in samples:
+            if sample.investigatorSampleId == ".NA":
+                continue
+            row = [str(sample.__dict__[field]) for field in SAMPLE_FIELDS]
+            row.append(str(sample_request_db[sample.igoId].igoComplete))
+            fp.write(",".join(row) + "\n")
+
+
+def main() -> None:
+    """Main entry point: extract LIMS data and generate project files."""
+    zone = limsETL.get_zone_from_env()
+    print(f"{zone=}")
+
+    project_no = sys.argv[1]
+    print(f"\n{project_no=}")
+
+    igo_id_pattern = re.compile(rf"^{project_no}_\d+$")
+
+    request_data = get_request_samples(project_no)
+    sample_request_db = {x.igoSampleId: x for x in request_data.samples}
+
+    # Fetch manifests for primary IGO IDs only
+    samples = []
+    for sample_info in request_data.samples:
+        if igo_id_pattern.match(sample_info.igoSampleId):
+            manifest = get_sample_manifest(sample_info.igoSampleId)
+            samples.append(manifest)
         else:
-            print(f"\nInvalid igoId={si.igoSampleId}")
+            print(f"\nInvalid igoId={sample_info.igoSampleId}")
 
+    samples = [s for s in samples if s is not None]
 
-    #samples=[getSampleManifest(xx.igoSampleId) for xx in requestData.samples]
-    samples=[x for x in samples if x!=None]
-
-    if len(samples)<1:
-        print()
-        print("All samples failed when pulling from LIMS")
-        print()
+    if len(samples) < 1:
+        print("\nAll samples failed when pulling from LIMS\n")
         sys.exit()
 
     print()
 
-    # for sample in requestData.samples:
-    #     print("Pulling sample",sample.igoSampleId,"...")
-    #     samples.append(limsETL.getSampleManifest(sample.igoSampleId))
-    #     print("\n")
+    # Output file paths
+    request_file = f"Proj_{project_no}_metadata.yaml"
+    mapping_file = f"Proj_{project_no}_sample_mapping.txt"
+    manifest_file = f"Proj_{project_no}_metadata_samples.csv"
 
-    #
-    # Dump request file
-    #
+    # Aggregate species across samples
+    species = ",".join(
+        {s.species for s in samples if s.species is not None and s.species != ".NA"}
+    )
+    request_data.Species = species
+    request_data.NumberOfSamples = len(samples)
 
-    requestFieldsToIgnore=set(("samples","pooledNormals"))
+    # Write mapping file and collect bait sets
+    baits_used = write_mapping_file(mapping_file, samples, sample_request_db, zone)
+    request_data.baitsUsed = ";".join(str(b) for b in baits_used)
+    print(f"\nBaitsUsed = {request_data.baitsUsed}")
 
-    requestFile="Proj_%s_metadata.yaml" % projectNo
-    mappingFile="Proj_%s_sample_mapping.txt" % projectNo
-    manifestFile="Proj_%s_metadata_samples.csv" % projectNo
+    # Write metadata and manifest files
+    write_request_file(request_file, request_data)
+    write_manifest_file(manifest_file, samples, sample_request_db)
 
-    # for s in samples:
-    #     print(getSampleMappingData(s))
-    # sys.exit(0)
 
-    species=",".join(set([s.species for s in samples if s.species is not None and s.species!=".NA"]))
-    requestData.Species=species
-    requestData.NumberOfSamples=len(samples)
-
-    baitsUsed=set()
-
-    with open(mappingFile,"w") as fp:
-        print("SampleId,IGOId,CompleteFlag")
-        for sample in samples:
-
-            out1=[
-                sample.investigatorSampleId,
-                sample.igoId,
-                sampleRequestDb[sample.igoId].igoComplete
-                ]
-            print(",".join(map(str,out1)))
-
-            if sampleRequestDb[sample.igoId].igoComplete:
-
-                if sample.baitSet is not None:
-                    baitsUsed.add(sample.baitSet)
-
-                sampleMapData=getSampleMappingData(sample)
-
-                if sample.investigatorSampleId is None:
-                    sampleId=os.path.basename(sampleMapData[0][1])
-                    sampleId=sampleId.replace("Sample_","")
-                    pos=sampleId.find("_IGO_")
-                    if pos >= 0:
-                        sampleId=sampleId[:pos]
-                    sample.investigatorSampleId=sampleId
-
-                out0=["_1",sample.investigatorSampleId]
-                for ri in sampleMapData:
-                    if ri[0]!="":
-                      if ZONE.startswith("IRIS"):
-                        ri[1]=ri[1].replace(JUNO_ROOT,IRIS_ROOT)
-                      out=out0+ri
-                      fp.write(("\t".join(map(str,out))+"\n"))
-
-    requestData.baitsUsed=";".join([str(x) for x in baitsUsed])
-    print("\nBaitsUsed =",requestData.baitsUsed)
-
-    with open(requestFile,"w") as fp:
-        for rField in requestData.__dict__:
-            if rField not in requestFieldsToIgnore:
-                fp.write("%s: \"%s\"\n" % (rField,getattr(requestData,rField)))
-
-    with open(manifestFile,"w") as fp:
-        header=sampleFields+["IGOComplete"]
-        fp.write((",".join(header)+"\n"))
-        for sample in samples:
-            if sample.investigatorSampleId==".NA":
-                continue
-            out=[]
-            for fi in sampleFields:
-                out.append(str(sample.__dict__[fi]))
-            out.append(str(sampleRequestDb[sample.igoId].igoComplete))
-            fp.write((",".join(out)+"\n"))
+if __name__ == "__main__":
+    main()
