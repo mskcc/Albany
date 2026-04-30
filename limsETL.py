@@ -95,6 +95,10 @@ class RequestSamples:
 
     def __init__(self, req_samples_json: dict) -> None:
         self.__dict__ = req_samples_json
+        if not hasattr(self, "samples"):
+            raise LIMSRequestException(
+                f"No samples found for request {getattr(self, 'requestId', '?')}"
+            )
         self.samples = [Sample(x) for x in self.samples]
 
 
