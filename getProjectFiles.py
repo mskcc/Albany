@@ -141,13 +141,42 @@ def derive_sample_id_from_fastq(fastq_dir: str) -> str:
     return sample_id
 
 
+def fallback_sample_id(
+    sample: limsETL.SampleManifest,
+    sample_map_data: list[list],
+) -> str:
+    """Pick a sample ID when LIMS has no investigatorSampleId.
+
+    Tries, in order: the ID derived from the first FASTQ directory,
+    sampleName, cmoSampleName, and finally igoId.
+
+    Args:
+        sample: SampleManifest with a null investigatorSampleId.
+        sample_map_data: List of [run_id, fastq_dir, run_type] entries.
+
+    Returns:
+        Sample ID string.
+    """
+    if sample_map_data:
+        return derive_sample_id_from_fastq(sample_map_data[0][1])
+    for field in ("sampleName", "cmoSampleName"):
+        value = getattr(sample, field, None)
+        if value:
+            return value
+    return sample.igoId
+
+
 def write_mapping_file(
     mapping_path: str,
     samples: list[limsETL.SampleManifest],
     sample_request_db: dict,
     zone: str,
-) -> set[str]:
+) -> tuple[set[str], list[limsETL.SampleManifest]]:
     """Write sample-to-FASTQ mapping file and collect bait sets.
+
+    Completed samples with no FASTQ files in LIMS are left out of the
+    mapping file and returned to the caller. Null records (failed
+    manifest fetches) are left out without being reported.
 
     Args:
         mapping_path: Output file path for mapping TSV.
@@ -156,9 +185,11 @@ def write_mapping_file(
         zone: Compute zone string (e.g., "IRIS_01", "JUNO_01").
 
     Returns:
-        Set of bait set names used across completed samples.
+        Tuple of (set of bait set names used across completed samples,
+        list of completed samples with no FASTQ files).
     """
     baits_used = set()
+    missing_fastq = []
 
     with open(mapping_path, "w") as fp:
         print("SampleId,IGOId,CompleteFlag")
@@ -180,9 +211,14 @@ def write_mapping_file(
             sample_map_data = get_sample_mapping_data(sample)
 
             if sample.investigatorSampleId is None:
-                sample.investigatorSampleId = derive_sample_id_from_fastq(
-                    sample_map_data[0][1]
+                sample.investigatorSampleId = fallback_sample_id(
+                    sample, sample_map_data
                 )
+
+            if not sample_map_data:
+                if sample.investigatorSampleId != ".NA":
+                    missing_fastq.append(sample)
+                continue
 
             prefix = ["_1", sample.investigatorSampleId]
             for run_id, fastq_dir, run_type in sample_map_data:
@@ -193,7 +229,7 @@ def write_mapping_file(
                 row = prefix + [run_id, fastq_dir, run_type]
                 fp.write("\t".join(map(str, row)) + "\n")
 
-    return baits_used
+    return baits_used, missing_fastq
 
 
 def write_request_file(
@@ -342,13 +378,28 @@ def main() -> None:
     request_data.NumberOfSamples = len(samples)
 
     # Write mapping file and collect bait sets
-    baits_used = write_mapping_file(mapping_file, samples, sample_request_db, zone)
+    baits_used, missing_fastq = write_mapping_file(
+        mapping_file, samples, sample_request_db, zone
+    )
     request_data.baitsUsed = ";".join(str(b) for b in baits_used)
     print(f"\nBaitsUsed = {request_data.baitsUsed}")
 
     # Write metadata and manifest files
     write_request_file(request_file, request_data)
     write_manifest_file(manifest_file, samples, sample_request_db)
+
+    if missing_fastq:
+        print(
+            f"\nERROR: {len(missing_fastq)} complete sample(s) have no "
+            f"FASTQ files in LIMS; left out of {mapping_file}:",
+            file=sys.stderr,
+        )
+        for sample in missing_fastq:
+            print(
+                f"   {sample.igoId}\t{sample.investigatorSampleId}",
+                file=sys.stderr,
+            )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
