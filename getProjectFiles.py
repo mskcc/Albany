@@ -3,23 +3,12 @@
 
 import argparse
 import csv
-import datetime
+import json
 import os
 import re
 import sys
 
-try:
-    from cachier import cachier
-except ModuleNotFoundError:
-    print("No Cachier Module so no cacheing")
-
-    def cachier(*args, **kwargs):
-        def inner(f):
-            return f
-
-        return inner
-
-
+import limsDB
 import limsETL
 
 # FASTQ folder roots by compute zone
@@ -52,58 +41,85 @@ No FASTQ files for:
 """
 
 
-def get_request_samples(project_no: str) -> limsETL.RequestSamples:
-    """Fetch request samples from LIMS for a project.
+def pull_request(project_no: str) -> str:
+    """Pull a request from LIMS as JSON text.
 
     Args:
         project_no: IGO project number.
 
     Returns:
-        RequestSamples object with sample data.
-    """
-    return limsETL.getRequestSamples(project_no)
-
-
-@cachier(cache_dir="./__cache__", stale_after=datetime.timedelta(days=1))
-def fetch_sample_manifest(sample_id: str) -> limsETL.SampleManifest:
-    """Fetch sample manifest from LIMS (cached for one day).
-
-    A failed fetch raises. cachier does not cache exceptions, so the
-    next run tries LIMS again.
-
-    Args:
-        sample_id: IGO sample ID.
-
-    Returns:
-        SampleManifest object.
+        Request JSON text.
 
     Raises:
-        Exception: Any error from limsETL.getSampleManifest.
+        limsETL.LIMSRequestException: If LIMS returns an error.
     """
-    return limsETL.getSampleManifest(sample_id)
+    print(f"\nPulling request {project_no} from LIMS")
+    return json.dumps(limsETL.get_request_samples_json(project_no))
 
 
-def get_sample_manifest(sample_id: str) -> limsETL.SampleManifest | None:
-    """Fetch sample manifest from LIMS, returning None on failure.
+def pull_sample_manifest(sample_id: str) -> str | None:
+    """Pull a sample manifest from LIMS as JSON text.
+
+    The manifest is parsed once as a check, so a malformed record
+    counts as a failed pull and is not stored.
 
     Args:
         sample_id: IGO sample ID.
 
     Returns:
-        SampleManifest object, or None if the fetch failed.
+        Manifest JSON text, or None if the pull failed.
     """
     print(f"Pulling sample {sample_id} ...", end="")
     try:
-        sample_manifest = fetch_sample_manifest(sample_id)
+        manifest_json = json.dumps(limsETL.get_sample_manifest_json(sample_id))
+        limsETL.SampleManifest(json.loads(manifest_json))
     except Exception as exc:
         print(f"\n   Failed to pull sample {sample_id}: {exc}\n")
         return None
 
     print(" done")
-    return sample_manifest
+    return manifest_json
 
 
-@cachier(cache_dir="./__cache__", stale_after=datetime.timedelta(days=1))
+def collect_manifests(
+    primary: list[limsETL.Sample],
+    stored_manifests: dict[str, str],
+    is_local: bool,
+) -> tuple[list[limsETL.SampleManifest], list[limsETL.Sample], dict[str, str]]:
+    """Get a manifest for each primary sample, from storage or LIMS.
+
+    Samples in stored_manifests are read from it. Others are pulled
+    from LIMS, except that when working from a local copy only
+    complete samples are pulled again; incomplete samples missing from
+    the local copy count as failed.
+
+    Args:
+        primary: Request samples with primary IGO IDs.
+        stored_manifests: Dict mapping IGO ID to stored manifest JSON.
+        is_local: True when the request came from the local database.
+
+    Returns:
+        Tuple of (manifests in request order, request samples with no
+        manifest, dict of newly pulled manifest JSON by IGO ID).
+    """
+    samples = []
+    failed_fetch = []
+    new_manifests = {}
+    for sample_info in primary:
+        igo_id = sample_info.igoSampleId
+        manifest_json = stored_manifests.get(igo_id)
+        if manifest_json is None and (not is_local or sample_info.igoComplete):
+            manifest_json = pull_sample_manifest(igo_id)
+            if manifest_json is not None:
+                new_manifests[igo_id] = manifest_json
+        if manifest_json is None:
+            failed_fetch.append(sample_info)
+        else:
+            samples.append(limsETL.SampleManifest(json.loads(manifest_json)))
+
+    return samples, failed_fetch, new_manifests
+
+
 def get_sample_mapping_data(
     sample_obj: limsETL.SampleManifest,
 ) -> list[list]:
@@ -313,11 +329,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         argv: Argument list (defaults to sys.argv[1:]).
 
     Returns:
-        Parsed namespace with project_no attribute.
+        Parsed namespace with project_no and force attributes.
     """
     parser = argparse.ArgumentParser(
         description="Extract project metadata from IGO LIMS and generate "
-        "standardized project files for BIC analysis pipelines.",
+        "standardized project files for BIC analysis pipelines. "
+        "Pulled data is stored in a local SQLite database and reused on "
+        "later runs.",
         epilog="Output files: Proj_<ID>_metadata.yaml, "
         "Proj_<ID>_sample_mapping.txt, Proj_<ID>_metadata_samples.csv",
     )
@@ -332,6 +350,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="derive project number from current working directory "
         "(expects Proj_<ID>/ in path)",
+    )
+    parser.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="pull the request from LIMS even if a local copy exists, "
+        "and replace the local copy",
     )
     args = parser.parse_args(argv)
 
@@ -357,24 +382,66 @@ def main() -> None:
 
     igo_id_pattern = re.compile(rf"^{project_no}_\d+$")
 
-    request_data = get_request_samples(project_no)
+    db_path = limsDB.get_db_path()
+    conn = limsDB.connect(db_path)
+
+    # Use the local copy of the request unless -f was given
+    stored = None if args.force else limsDB.get_request(conn, project_no)
+    if stored is None:
+        request_json = pull_request(project_no)
+        pulled_at = limsDB.timestamp()
+        stored_manifests = {}
+    else:
+        request_json, pulled_at = stored
+        stored_manifests = limsDB.get_sample_manifests(conn, project_no)
+        print(
+            f"\nRetrieving local copy of request {project_no} pulled on "
+            f"{limsDB.format_timestamp(pulled_at)}"
+        )
+    is_local = stored is not None
+
+    request_data = limsETL.RequestSamples(json.loads(request_json))
     sample_request_db = {x.igoSampleId: x for x in request_data.samples}
 
-    # Fetch manifests for primary IGO IDs only
-    samples = []
-    failed_fetch = []
+    # Use primary IGO IDs only
+    primary = []
     for sample_info in request_data.samples:
-        if not igo_id_pattern.match(sample_info.igoSampleId):
-            print(f"\nInvalid igoId={sample_info.igoSampleId}")
-            continue
-        manifest = get_sample_manifest(sample_info.igoSampleId)
-        if manifest is None:
-            failed_fetch.append(sample_info)
+        if igo_id_pattern.match(sample_info.igoSampleId):
+            primary.append(sample_info)
         else:
-            samples.append(manifest)
+            print(f"\nInvalid igoId={sample_info.igoSampleId}")
+
+    if is_local:
+        retry = [
+            s
+            for s in primary
+            if s.igoComplete and s.igoSampleId not in stored_manifests
+        ]
+        if retry:
+            print(
+                f"\nLocal copy is missing {len(retry)} complete sample(s); "
+                "pulling them from LIMS"
+            )
+
+    samples, failed_fetch, new_manifests = collect_manifests(
+        primary, stored_manifests, is_local
+    )
+
+    if is_local:
+        if new_manifests:
+            limsDB.save_sample_manifests(
+                conn, project_no, limsDB.timestamp(), new_manifests
+            )
+    else:
+        limsDB.save_request(conn, project_no, request_json, pulled_at, new_manifests)
+        print(f"\nSaved request {project_no} to {db_path}")
+    conn.close()
 
     if not samples:
-        print("\nNo sample manifests could be pulled from LIMS\n", file=sys.stderr)
+        print(
+            f"\nNo sample manifests available for request {project_no}\n",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     print()
@@ -400,6 +467,16 @@ def main() -> None:
     # Write metadata and manifest files
     write_request_file(request_file, request_data)
     write_manifest_file(manifest_file, samples, sample_request_db)
+
+    if is_local:
+        incomplete = [s for s in primary if not s.igoComplete]
+        if incomplete:
+            print(
+                f"\nWARNING: {len(incomplete)} sample(s) were incomplete when "
+                f"pulled on {limsDB.format_timestamp(pulled_at)}; "
+                "use -f to refresh",
+                file=sys.stderr,
+            )
 
     failed_complete = [s for s in failed_fetch if s.igoComplete]
     if failed_complete:
