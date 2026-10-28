@@ -2,6 +2,7 @@
 """Extract project metadata from IGO LIMS and generate standardized project files."""
 
 import argparse
+import csv
 import datetime
 import os
 import re
@@ -256,20 +257,24 @@ def write_manifest_file(
 ) -> None:
     """Write sample metadata CSV file.
 
+    Values that contain commas, quotes, or newlines are quoted, so a
+    field such as "Lung, left" stays in its own column.
+
     Args:
         manifest_path: Output file path.
         samples: List of SampleManifest objects.
         sample_request_db: Dict mapping IGO ID to Sample request objects.
     """
     header = SAMPLE_FIELDS + ["IGOComplete"]
-    with open(manifest_path, "w") as fp:
-        fp.write(",".join(header) + "\n")
+    with open(manifest_path, "w", newline="") as fp:
+        writer = csv.writer(fp, lineterminator="\n")
+        writer.writerow(header)
         for sample in samples:
             if sample.investigatorSampleId == ".NA":
                 continue
             row = [str(sample.__dict__[field]) for field in SAMPLE_FIELDS]
             row.append(str(sample_request_db[sample.igoId].igoComplete))
-            fp.write(",".join(row) + "\n")
+            writer.writerow(row)
 
 
 PROJ_DIR_PATTERN = re.compile(r".*/Proj_([^/]+)/")
