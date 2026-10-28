@@ -217,14 +217,14 @@ def get_deliveries(timestamp: str) -> list:
     return response.json()
 
 
-def get_request_samples(request_id: str) -> RequestSamples:
-    """Fetch all samples for a LIMS request.
+def get_request_samples_json(request_id: str) -> dict:
+    """Fetch the raw JSON for a LIMS request.
 
     Args:
         request_id: IGO request/project ID.
 
     Returns:
-        RequestSamples object containing sample data.
+        Request JSON as returned by LIMS.
 
     Raises:
         LIMSRequestException: If the API request fails or returns
@@ -244,17 +244,33 @@ def get_request_samples(request_id: str) -> RequestSamples:
             f"Invalid LIMS record requestId!=request_id "
             f"[{data['requestId']},{request_id}]"
         )
-    return RequestSamples(data)
+    return data
 
 
-def get_sample_manifest(sample_id: str) -> SampleManifest:
-    """Fetch sample manifest metadata from LIMS.
+def get_request_samples(request_id: str) -> RequestSamples:
+    """Fetch all samples for a LIMS request.
+
+    Args:
+        request_id: IGO request/project ID.
+
+    Returns:
+        RequestSamples object containing sample data.
+
+    Raises:
+        LIMSRequestException: If the API request fails or returns
+            mismatched request ID.
+    """
+    return RequestSamples(get_request_samples_json(request_id))
+
+
+def get_sample_manifest_json(sample_id: str) -> dict:
+    """Fetch the raw JSON for a sample manifest from LIMS.
 
     Args:
         sample_id: IGO sample ID.
 
     Returns:
-        SampleManifest object with full sample metadata.
+        Sample manifest JSON as returned by LIMS.
 
     Raises:
         LIMSRequestException: If the API request fails, returns invalid
@@ -282,7 +298,23 @@ def get_sample_manifest(sample_id: str) -> SampleManifest:
             f"Failed to fetch SampleManifest for sampleId:{sample_id}. "
             f"LIMS returned {data['igoId']}"
         )
-    return SampleManifest(data)
+    return data
+
+
+def get_sample_manifest(sample_id: str) -> SampleManifest:
+    """Fetch sample manifest metadata from LIMS.
+
+    Args:
+        sample_id: IGO sample ID.
+
+    Returns:
+        SampleManifest object with full sample metadata.
+
+    Raises:
+        LIMSRequestException: If the API request fails, returns invalid
+            data, or returns a mismatched sample ID.
+    """
+    return SampleManifest(get_sample_manifest_json(sample_id))
 
 
 # Backward-compatible aliases for the renamed API functions
