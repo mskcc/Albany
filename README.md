@@ -75,6 +75,15 @@ con <- DBI::dbConnect(RSQLite::SQLite(), "limsDB.sqlite")
 dplyr::tbl(con, "v_samples")
 ```
 
+To export the views as flat tables:
+```bash
+python3 dumpLimsDB.py              # limsDB.xlsx and limsDB_<view>.csv
+python3 dumpLimsDB.py -o out/lims  # out/lims.xlsx and out/lims_<view>.csv
+```
+The workbook has one sheet per view, and there is one CSV file per
+view, named without the `v_` prefix. `-d` selects a different
+database.
+
 ### Key Features
 - Environment zone detection for FASTQ path resolution
 - Local SQLite copy of LIMS data for fast repeat runs and queries
