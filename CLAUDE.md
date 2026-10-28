@@ -30,7 +30,7 @@ R pipeline scripts consume these files:
 ### Python Layer
 
 - **limsETL.py**: Core library. Classes (`Sample`, `RequestSamples`, `SampleManifest`, `Library`, `Run`, `MachineRuns`) wrap LIMS JSON responses by assigning `__dict__` directly from JSON. API functions (`getRequestSamples`, `getSampleManifest`, `getDeliveries`) call `settings.LIMS_ROOT_URL` with basic auth.
-- **getProjectFiles.py**: Main entry point. Filters to primary IGO IDs only (regex `^<projectNo>_\d+$`). Uses `cachier` for caching (1-day stale, `__cache__/` dir); gracefully degrades if cachier is unavailable. Creates null records for failed sample fetches rather than aborting.
+- **getProjectFiles.py**: Main entry point. Filters to primary IGO IDs only (regex `^<projectNo>_\d+$`). Uses `cachier` for caching (1-day stale, `__cache__/` dir); gracefully degrades if cachier is unavailable. Failed sample fetches are not cached; those samples are left out of all outputs, and complete ones are reported on stderr with exit 1. Complete samples with no FASTQ files are reported the same way.
 - **conf.py**: Credentials (git-ignored). Copy from `conf.py.tmpl`.
 
 ### Zone-Aware Path Handling
@@ -82,4 +82,4 @@ Regression tests: re-generates `sample_mapping.txt` for each project in `Targets
 - Output files: `Proj_<RequestId>_<type>.<ext>` (all git-ignored)
 - Cache directory: `__cache__/` (git-ignored)
 - IGO ID filtering: only primary IDs (e.g., `12345_A_1`) are processed; secondary IDs (e.g., `12345_B_1_1`) are skipped
-- Null handling: missing species/baitSet/investigatorSampleId default to `.NA`; investigatorSampleId auto-derived from FASTQ path when missing
+- Null handling: when investigatorSampleId is null it is derived from the FASTQ path, then sampleName, cmoSampleName, or igoId
