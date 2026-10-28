@@ -65,28 +65,39 @@ def get_request_samples(project_no: str) -> limsETL.RequestSamples:
 
 
 @cachier(cache_dir="./__cache__", stale_after=datetime.timedelta(days=1))
-def get_sample_manifest(sample_id: str) -> limsETL.SampleManifest:
-    """Fetch sample manifest from LIMS, creating a null record on failure.
+def fetch_sample_manifest(sample_id: str) -> limsETL.SampleManifest:
+    """Fetch sample manifest from LIMS (cached for one day).
+
+    A failed fetch raises. cachier does not cache exceptions, so the
+    next run tries LIMS again.
 
     Args:
         sample_id: IGO sample ID.
 
     Returns:
-        SampleManifest object (may be null record if fetch failed).
+        SampleManifest object.
+
+    Raises:
+        Exception: Any error from limsETL.getSampleManifest.
+    """
+    return limsETL.getSampleManifest(sample_id)
+
+
+def get_sample_manifest(sample_id: str) -> limsETL.SampleManifest | None:
+    """Fetch sample manifest from LIMS, returning None on failure.
+
+    Args:
+        sample_id: IGO sample ID.
+
+    Returns:
+        SampleManifest object, or None if the fetch failed.
     """
     print(f"Pulling sample {sample_id} ...", end="")
     try:
-        sample_manifest = limsETL.getSampleManifest(sample_id)
-    except Exception:
-        print(f"\n   Invalid Sample ID {sample_id}")
-        print("   Creating NULL record\n")
-        null_sample = dict(
-            libraries=[],
-            species=".NA",
-            investigatorSampleId=".NA",
-            igoId=sample_id,
-        )
-        sample_manifest = limsETL.SampleManifest(null_sample)
+        sample_manifest = fetch_sample_manifest(sample_id)
+    except Exception as exc:
+        print(f"\n   Failed to pull sample {sample_id}: {exc}\n")
+        return None
 
     print(" done")
     return sample_manifest
@@ -176,8 +187,7 @@ def write_mapping_file(
     """Write sample-to-FASTQ mapping file and collect bait sets.
 
     Completed samples with no FASTQ files in LIMS are left out of the
-    mapping file and returned to the caller. Null records (failed
-    manifest fetches) are left out without being reported.
+    mapping file and returned to the caller.
 
     Args:
         mapping_path: Output file path for mapping TSV.
@@ -217,8 +227,7 @@ def write_mapping_file(
                 )
 
             if not sample_map_data:
-                if sample.investigatorSampleId != ".NA":
-                    missing_fastq.append(sample)
+                missing_fastq.append(sample)
                 continue
 
             prefix = ["_1", sample.investigatorSampleId]
@@ -270,8 +279,6 @@ def write_manifest_file(
         writer = csv.writer(fp, lineterminator="\n")
         writer.writerow(header)
         for sample in samples:
-            if sample.investigatorSampleId == ".NA":
-                continue
             row = [str(sample.__dict__[field]) for field in SAMPLE_FIELDS]
             row.append(str(sample_request_db[sample.igoId].igoComplete))
             writer.writerow(row)
@@ -355,18 +362,20 @@ def main() -> None:
 
     # Fetch manifests for primary IGO IDs only
     samples = []
+    failed_fetch = []
     for sample_info in request_data.samples:
-        if igo_id_pattern.match(sample_info.igoSampleId):
-            manifest = get_sample_manifest(sample_info.igoSampleId)
-            samples.append(manifest)
-        else:
+        if not igo_id_pattern.match(sample_info.igoSampleId):
             print(f"\nInvalid igoId={sample_info.igoSampleId}")
+            continue
+        manifest = get_sample_manifest(sample_info.igoSampleId)
+        if manifest is None:
+            failed_fetch.append(sample_info)
+        else:
+            samples.append(manifest)
 
-    samples = [s for s in samples if s is not None]
-
-    if len(samples) < 1:
-        print("\nAll samples failed when pulling from LIMS\n")
-        sys.exit()
+    if not samples:
+        print("\nNo sample manifests could be pulled from LIMS\n", file=sys.stderr)
+        sys.exit(1)
 
     print()
 
@@ -376,11 +385,10 @@ def main() -> None:
     manifest_file = f"Proj_{project_no}_metadata_samples.csv"
 
     # Aggregate species across samples
-    species = ",".join(
-        {s.species for s in samples if s.species is not None and s.species != ".NA"}
-    )
+    species = ",".join({s.species for s in samples if s.species is not None})
     request_data.Species = species
-    request_data.NumberOfSamples = len(samples)
+    # Count every primary IGO ID, including failed fetches
+    request_data.NumberOfSamples = len(samples) + len(failed_fetch)
 
     # Write mapping file and collect bait sets
     baits_used, missing_fastq = write_mapping_file(
@@ -393,6 +401,20 @@ def main() -> None:
     write_request_file(request_file, request_data)
     write_manifest_file(manifest_file, samples, sample_request_db)
 
+    failed_complete = [s for s in failed_fetch if s.igoComplete]
+    if failed_complete:
+        print(
+            f"\nERROR: {len(failed_complete)} complete sample(s) could not "
+            "be pulled from LIMS; left out of all output files:",
+            file=sys.stderr,
+        )
+        for sample_info in failed_complete:
+            invest_id = getattr(sample_info, "investigatorSampleId", None)
+            print(
+                f"   {sample_info.igoSampleId}\t{invest_id}",
+                file=sys.stderr,
+            )
+
     if missing_fastq:
         print(
             f"\nERROR: {len(missing_fastq)} complete sample(s) have no "
@@ -404,6 +426,8 @@ def main() -> None:
                 f"   {sample.igoId}\t{sample.investigatorSampleId}",
                 file=sys.stderr,
             )
+
+    if failed_complete or missing_fastq:
         sys.exit(1)
 
 
