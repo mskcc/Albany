@@ -14,7 +14,10 @@ LimsETL (v2.1.0) extracts genomic project metadata from IGO LIMS via REST API an
 IGO LIMS REST API
     |
     v
-getProjectFiles.py  (extracts data, caches API calls)
+limsDB.sqlite       (local copy of pulled requests and manifests)
+    |
+    v
+getProjectFiles.py  (extracts data; -f re-pulls from LIMS)
     |
     +-> Proj_<ID>_metadata.yaml        (request-level metadata)
     +-> Proj_<ID>_sample_mapping.txt   (sample-to-FASTQ mappings, TSV)
@@ -29,8 +32,9 @@ R pipeline scripts consume these files:
 
 ### Python Layer
 
-- **limsETL.py**: Core library. Classes (`Sample`, `RequestSamples`, `SampleManifest`, `Library`, `Run`, `MachineRuns`) wrap LIMS JSON responses by assigning `__dict__` directly from JSON. API functions (`getRequestSamples`, `getSampleManifest`, `getDeliveries`) call `settings.LIMS_ROOT_URL` with basic auth.
-- **getProjectFiles.py**: Main entry point. Filters to primary IGO IDs only (regex `^<projectNo>_\d+$`). Uses `cachier` for caching (1-day stale, `__cache__/` dir); gracefully degrades if cachier is unavailable. Failed sample fetches are not cached; those samples are left out of all outputs, and complete ones are reported on stderr with exit 1. Complete samples with no FASTQ files are reported the same way.
+- **limsETL.py**: Core library. Classes (`Sample`, `RequestSamples`, `SampleManifest`, `Library`, `Run`, `MachineRuns`) wrap LIMS JSON responses by assigning `__dict__` directly from JSON. API functions (`getRequestSamples`, `getSampleManifest`, `getDeliveries`) call `settings.LIMS_ROOT_URL` with basic auth. `get_request_samples_json` and `get_sample_manifest_json` return the raw JSON that the object functions wrap.
+- **limsDB.py**: Local SQLite store. Tables `requests` and `sample_manifests` hold raw LIMS JSON with an ISO 8601 `pulled_at`; views `v_requests`, `v_request_samples`, `v_samples`, `v_fastqs` expose fields as columns. Path is `settings.LIMS_DB_PATH` if set, else `limsDB.sqlite` in the code directory. Uses the default rollback journal, not WAL, because the DB may be on a network filesystem. `PRAGMA user_version` is the schema version; bump `SCHEMA_VERSION` when tables or views change.
+- **getProjectFiles.py**: Main entry point. Filters to primary IGO IDs only (regex `^<projectNo>_\d+$`). If the request is in the local DB, uses it (no request call) and pulls only complete samples missing from it; otherwise, or with `-f`, pulls from LIMS and replaces the stored request and its manifests. Output files are built from the same JSON either way. Failed sample pulls are not stored; those samples are left out of all outputs, and complete ones are reported on stderr with exit 1. Complete samples with no FASTQ files are reported the same way. A run from a local copy warns when samples were incomplete at pull time.
 - **conf.py**: Credentials (git-ignored). Copy from `conf.py.tmpl`.
 
 ### Zone-Aware Path Handling
@@ -48,8 +52,11 @@ R scripts source `tools.R` (from `/home/socci/Code/LIMS/LimsETL/tools.R` -- hard
 ## Common Commands
 
 ```bash
-# Extract project data from LIMS
+# Extract project data (local copy if stored, else LIMS)
 python3 getProjectFiles.py <PROJECT_NUMBER>
+
+# Force a re-pull from LIMS and replace the local copy
+python3 getProjectFiles.py -f <PROJECT_NUMBER>
 
 # Full pipeline (run from Proj_<ID> directory inside variant/chipseq/rnaseq)
 ./createBICProject.sh
@@ -73,13 +80,13 @@ Regression tests: re-generates `sample_mapping.txt` for each project in `Targets
 
 ## Dependencies
 
-**Python**: `requirements.txt` -- `urllib3==1.26.12`, `requests==2.28.1`. Optional: `cachier`.
+**Python**: `requirements.txt` -- `urllib3==1.26.12`, `requests==2.28.1`. `sqlite3` from the standard library (SQLite with JSON functions).
 **R**: `yaml`, `tidyverse`, `openxlsx`, `fs`.
 **Virtual env**: `venv3/` (git-ignored).
 
 ## Key Conventions
 
 - Output files: `Proj_<RequestId>_<type>.<ext>` (all git-ignored)
-- Cache directory: `__cache__/` (git-ignored)
+- Local database: `limsDB.sqlite` (git-ignored). The old cachier `__cache__/` dirs are no longer used
 - IGO ID filtering: only primary IDs (e.g., `12345_A_1`) are processed; secondary IDs (e.g., `12345_B_1_1`) are skipped
 - Null handling: when investigatorSampleId is null it is derived from the FASTQ path, then sampleName, cmoSampleName, or igoId
