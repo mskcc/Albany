@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Rewrite the FASTQ root of the paths in a Proj_<ID>_sample_mapping.txt file.
+
+The part of each FASTQ path up to and including the first /FASTQ/ is
+replaced with NewRoot; the rest of the path is kept:
+
+    NewRoot = /A/B/C/D/FASTQ
+    /X/Y/Z/W/FASTQ/G/E/F/D  ==>  /A/B/C/D/FASTQ/G/E/F/D
+
+Reads mappingFile, or stdin if it is not given, and writes to stdout.
+"""
+
+import argparse
+import sys
+from typing import TextIO
+
+ANCHOR = "/FASTQ/"
+FASTQ_COL = 3
+
+
+def reset_path(path: str, new_root: str) -> str:
+    """Replace the root of a FASTQ path with a new root.
+
+    Args:
+        path: FASTQ directory path containing /FASTQ/.
+        new_root: New root ending in /FASTQ, with no trailing slash.
+
+    Returns:
+        new_root joined with the part of path after the first /FASTQ/.
+
+    Raises:
+        ValueError: If path does not contain /FASTQ/.
+    """
+    pos = path.find(ANCHOR)
+    if pos < 0:
+        raise ValueError(f"no {ANCHOR} in path: {path}")
+    return new_root + "/" + path[pos + len(ANCHOR) :]
+
+
+def reset_mapping(fin: TextIO, new_root: str) -> list[str]:
+    """Rewrite the FASTQ column of each mapping line.
+
+    Args:
+        fin: Input mapping file (TSV).
+        new_root: New root ending in /FASTQ, with no trailing slash.
+
+    Returns:
+        Rewritten lines, each ending in a newline.
+
+    Raises:
+        ValueError: If a line has too few columns or its FASTQ path does
+            not contain /FASTQ/.
+    """
+    out = []
+    for line_no, line in enumerate(fin, start=1):
+        line = line.rstrip("\n")
+        if line == "":
+            continue
+        fields = line.split("\t")
+        if len(fields) <= FASTQ_COL:
+            raise ValueError(f"line {line_no}: too few columns: {line}")
+        try:
+            fields[FASTQ_COL] = reset_path(fields[FASTQ_COL], new_root)
+        except ValueError as e:
+            raise ValueError(f"line {line_no}: {e}") from None
+        out.append("\t".join(fields) + "\n")
+    return out
+
+
+def main() -> int:
+    """Parse arguments and rewrite the mapping file to stdout.
+
+    Returns:
+        Exit status: 0 on success, 1 on error.
+    """
+    parser = argparse.ArgumentParser(
+        description="Rewrite the FASTQ root of the paths in a "
+        "Proj_<ID>_sample_mapping.txt file. Writes to stdout.",
+    )
+    parser.add_argument("new_root", help="new root, e.g. /A/B/C/D/FASTQ")
+    parser.add_argument(
+        "mapping_file",
+        nargs="?",
+        help="sample mapping file (default: stdin)",
+    )
+    args = parser.parse_args()
+
+    new_root = args.new_root.rstrip("/")
+    if not new_root.endswith("/FASTQ"):
+        print(f"ERROR: NewRoot must end in /FASTQ: {args.new_root}", file=sys.stderr)
+        return 1
+
+    # Write nothing unless every line converts
+    try:
+        if args.mapping_file is None:
+            lines = reset_mapping(sys.stdin, new_root)
+        else:
+            with open(args.mapping_file) as fin:
+                lines = reset_mapping(fin, new_root)
+    except (OSError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+    sys.stdout.writelines(lines)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
