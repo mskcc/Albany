@@ -102,7 +102,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "-o",
         "--out",
-        default="limsDB",
+        default=os.path.join("lims", "limsDB"),
         help="output path prefix (default: %(default)s)",
     )
     return parser.parse_args(argv)
