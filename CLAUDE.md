@@ -54,13 +54,13 @@ R scripts source `tools.R` (from `/home/socci/Code/LIMS/LimsETL/tools.R` -- hard
 
 ```bash
 # Extract project data (local copy if stored, else LIMS)
-python3 getProjectFiles.py <PROJECT_NUMBER>
+./getProjectFiles.py <PROJECT_NUMBER>
 
 # Force a re-pull from LIMS and replace the local copy
-python3 getProjectFiles.py -f <PROJECT_NUMBER>
+./getProjectFiles.py -f <PROJECT_NUMBER>
 
 # Export the local database views to Excel and CSV
-python3 dumpLimsDB.py [-d DB] [-o OUT_PREFIX]
+./dumpLimsDB.py [-d DB] [-o OUT_PREFIX]
 
 # Rewrite FASTQ paths to a new root (stdin if no file; writes stdout)
 ./resetFASTQRoot /new/root/FASTQ [Proj_<ID>_sample_mapping.txt]

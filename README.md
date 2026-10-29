@@ -39,8 +39,8 @@ LimsETL is a bioinformatics data extraction and processing pipeline that interfa
 
 ### Extract Project Data
 ```bash
-python3 getProjectFiles.py <PROJECT_NUMBER>
-python3 getProjectFiles.py -f <PROJECT_NUMBER>   # re-pull from LIMS
+./getProjectFiles.py <PROJECT_NUMBER>
+./getProjectFiles.py -f <PROJECT_NUMBER>   # re-pull from LIMS
 ```
 Generates three output files:
 - `Proj_<ID>_metadata.yaml`: Project-level metadata
@@ -77,8 +77,8 @@ dplyr::tbl(con, "v_samples")
 
 To export the views as flat tables:
 ```bash
-python3 dumpLimsDB.py              # lims/limsDB_<YYMMDD>.xlsx, lims/limsDB_<YYMMDD>_<view>.csv
-python3 dumpLimsDB.py -o out/lims  # out/lims_<YYMMDD>.xlsx, out/lims_<YYMMDD>_<view>.csv
+./dumpLimsDB.py              # lims/limsDB_<YYMMDD>.xlsx, lims/limsDB_<YYMMDD>_<view>.csv
+./dumpLimsDB.py -o out/lims  # out/lims_<YYMMDD>.xlsx, out/lims_<YYMMDD>_<view>.csv
 ```
 `<YYMMDD>` is the date of the dump. The default output directory is
 `./lims/`, created if needed. The workbook has one sheet per view,
