@@ -62,6 +62,9 @@ python3 getProjectFiles.py -f <PROJECT_NUMBER>
 # Export the local database views to Excel and CSV
 python3 dumpLimsDB.py [-d DB] [-o OUT_PREFIX]
 
+# Rewrite FASTQ paths to a new root (stdin if no file; writes stdout)
+./resetFASTQRoot /new/root/FASTQ [Proj_<ID>_sample_mapping.txt]
+
 # Full pipeline (run from Proj_<ID> directory inside variant/chipseq/rnaseq)
 ./createBICProject.sh
 
