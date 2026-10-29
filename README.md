@@ -77,12 +77,12 @@ dplyr::tbl(con, "v_samples")
 
 To export the views as flat tables:
 ```bash
-python3 dumpLimsDB.py              # limsDB.xlsx and limsDB_<view>.csv
-python3 dumpLimsDB.py -o out/lims  # out/lims.xlsx and out/lims_<view>.csv
+python3 dumpLimsDB.py              # limsDB_<YYMMDD>.xlsx, limsDB_<YYMMDD>_<view>.csv
+python3 dumpLimsDB.py -o out/lims  # out/lims_<YYMMDD>.xlsx, out/lims_<YYMMDD>_<view>.csv
 ```
-The workbook has one sheet per view, and there is one CSV file per
-view, named without the `v_` prefix. `-d` selects a different
-database.
+`<YYMMDD>` is the date of the dump. The workbook has one sheet per
+view, and there is one CSV file per view, named without the `v_`
+prefix. `-d` selects a different database.
 
 ### Key Features
 - Environment zone detection for FASTQ path resolution
