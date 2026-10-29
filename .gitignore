@@ -5,6 +5,8 @@ __pycache__
 Proj_*
 __cache__
 limsDB.sqlite*
+limsDB*.xlsx
+limsDB_*.csv
 *.netrc
 SwaggerURL
 ._*
