@@ -6,7 +6,7 @@ DDIR=$(basename $(dirname $PWD))
 
 echo $DDIR, $PDIR
 
-python3 $SDIR/getProjectFiles.py $PDIR
+$SDIR/getProjectFiles.py $PDIR
 
 if [ "$DDIR" == "chipseq" ]; then
 

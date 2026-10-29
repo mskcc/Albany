@@ -12,7 +12,7 @@ for mapfile in Targets/*_sample_mapping.txt*; do
 
     echo -n "Testing ..." $projNo | tee -a $LOGFILE
 
-    python3 ../getProjectFiles.py $projNo >/dev/null
+    ../getProjectFiles.py $projNo >/dev/null
     cat Proj_${projNo}_sample_mapping.txt | sort -V >srt
     mv srt Proj_${projNo}_sample_mapping.txt
 
