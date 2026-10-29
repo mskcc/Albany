@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import datetime
 import os
 import sqlite3
 import sys
@@ -88,7 +89,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Dump the views of the local LIMS database to an Excel "
         "workbook with one sheet per view and to one CSV file per view.",
-        epilog="Output files: <OUT>.xlsx and <OUT>_<view>.csv, with views "
+        epilog="Output files: <OUT>_<YYMMDD>.xlsx and "
+        "<OUT>_<YYMMDD>_<view>.csv, with today's date and views "
         "requests, request_samples, samples, fastqs",
     )
     parser.add_argument(
@@ -100,14 +102,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "-o",
         "--out",
-        default="limsDB",
+        default=os.path.join("lims", "limsDB"),
         help="output path prefix (default: %(default)s)",
     )
     return parser.parse_args(argv)
 
 
 def main() -> None:
-    """Dump each view to a sheet of <OUT>.xlsx and to <OUT>_<view>.csv."""
+    """Dump each view to a sheet of <OUT>_<YYMMDD>.xlsx and to a CSV file.
+
+    The CSV files are <OUT>_<YYMMDD>_<view>.csv, with today's date.
+    """
     args = parse_args()
 
     if not os.path.isfile(args.db):
@@ -117,6 +122,7 @@ def main() -> None:
     out_dir = os.path.dirname(args.out)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
+    out = f"{args.out}_{datetime.date.today():%y%m%d}"
 
     conn = limsDB.connect(args.db)
     wb = Workbook(write_only=True)
@@ -124,7 +130,7 @@ def main() -> None:
         name = view.removeprefix("v_")
         columns, rows = read_view(conn, view)
 
-        csv_file = f"{args.out}_{name}.csv"
+        csv_file = f"{out}_{name}.csv"
         write_csv(csv_file, columns, rows)
         print(f"{name}: {len(rows)} rows -> {csv_file}")
 
@@ -142,7 +148,7 @@ def main() -> None:
             ws.append([excel_value(ws, v) for v in row])
     conn.close()
 
-    xlsx_file = f"{args.out}.xlsx"
+    xlsx_file = f"{out}.xlsx"
     wb.views = [
         BookView(xWindow=4000, yWindow=3000, windowWidth=32000, windowHeight=20000)
     ]
