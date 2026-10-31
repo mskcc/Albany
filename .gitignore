@@ -4,9 +4,10 @@ venv3
 __pycache__
 Proj_*
 __cache__
-limsDB.sqlite*
+limsDB*.sqlite*
 limsDB*.xlsx
 limsDB_*.csv
+limsDB_*.txt
 *.netrc
 SwaggerURL
 ._*
