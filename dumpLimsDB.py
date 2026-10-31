@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Dump the local LIMS database views to an Excel workbook and CSV files."""
+"""Dump the local LIMS database views to an Excel workbook and CSV files.
+
+Missing values are written as empty CSV fields and empty cells. The
+views already return LIMS missing-value text ("null", "N/A", ...) as
+NULL; see limsDB.MISSING_TEXT.
+"""
 
 import argparse
 import csv

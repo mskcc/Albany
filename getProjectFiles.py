@@ -81,6 +81,36 @@ def pull_sample_manifest(sample_id: str) -> str | None:
     return manifest_json
 
 
+def load_request(request_json: str) -> limsETL.RequestSamples:
+    """Parse request JSON, with LIMS missing-value text set to None.
+
+    Args:
+        request_json: Request JSON text.
+
+    Returns:
+        RequestSamples object.
+
+    Raises:
+        limsETL.LIMSRequestException: If the request has no samples.
+    """
+    request = limsDB.clean_missing(json.loads(request_json))
+    for sample_json in request.get("samples") or []:
+        limsDB.clean_missing(sample_json)
+    return limsETL.RequestSamples(request)
+
+
+def load_manifest(manifest_json: str) -> limsETL.SampleManifest:
+    """Parse sample manifest JSON, with LIMS missing-value text set to None.
+
+    Args:
+        manifest_json: Sample manifest JSON text.
+
+    Returns:
+        SampleManifest object.
+    """
+    return limsETL.SampleManifest(limsDB.clean_missing(json.loads(manifest_json)))
+
+
 def collect_manifests(
     primary: list[limsETL.Sample],
     stored_manifests: dict[str, str],
@@ -115,7 +145,7 @@ def collect_manifests(
         if manifest_json is None:
             failed_fetch.append(sample_info)
         else:
-            samples.append(limsETL.SampleManifest(json.loads(manifest_json)))
+            samples.append(load_manifest(manifest_json))
 
     return samples, failed_fetch, new_manifests
 
@@ -264,6 +294,8 @@ def write_request_file(
 ) -> None:
     """Write request-level metadata as YAML.
 
+    Missing values are written as empty strings.
+
     Args:
         request_path: Output file path.
         request_data: RequestSamples object with project metadata.
@@ -272,7 +304,10 @@ def write_request_file(
     with open(request_path, "w") as fp:
         for field in request_data.__dict__:
             if field not in fields_to_ignore:
-                fp.write(f'{field}: "{getattr(request_data, field)}"\n')
+                value = getattr(request_data, field)
+                if value is None:
+                    value = ""
+                fp.write(f'{field}: "{value}"\n')
 
 
 def write_manifest_file(
@@ -283,7 +318,8 @@ def write_manifest_file(
     """Write sample metadata CSV file.
 
     Values that contain commas, quotes, or newlines are quoted, so a
-    field such as "Lung, left" stays in its own column.
+    field such as "Lung, left" stays in its own column. Missing values
+    are written as empty fields.
 
     Args:
         manifest_path: Output file path.
@@ -295,8 +331,8 @@ def write_manifest_file(
         writer = csv.writer(fp, lineterminator="\n")
         writer.writerow(header)
         for sample in samples:
-            row = [str(sample.__dict__[field]) for field in SAMPLE_FIELDS]
-            row.append(str(sample_request_db[sample.igoId].igoComplete))
+            row = [sample.__dict__[field] for field in SAMPLE_FIELDS]
+            row.append(sample_request_db[sample.igoId].igoComplete)
             writer.writerow(row)
 
 
@@ -400,7 +436,7 @@ def main() -> None:
         )
     is_local = stored is not None
 
-    request_data = limsETL.RequestSamples(json.loads(request_json))
+    request_data = load_request(request_json)
     sample_request_db = {x.igoSampleId: x for x in request_data.samples}
 
     # Use primary IGO IDs only
