@@ -4,6 +4,11 @@ Each LIMS response is stored as raw JSON with the time it was pulled.
 SQL views (v_requests, v_request_samples, v_samples, v_fastqs) expose
 common fields as columns for querying from Python or R.
 
+LIMS writes a missing value in several ways: JSON null, "", "null",
+"N/A", "NA", "na". The views return all of them as NULL, and
+clean_missing() sets them to None in parsed JSON. The stored JSON is
+left as LIMS sent it.
+
 The database uses SQLite's default rollback journal. WAL mode is not
 used because it needs shared memory on one host, and the database may
 sit on a network filesystem.
@@ -22,7 +27,11 @@ DEFAULT_DB_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "limsDB.sqlite"
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+# Text LIMS uses for a missing value, matched after trimming spaces and
+# lowercasing. Treated the same as JSON null.
+MISSING_TEXT = ("", "null", "none", "na", "n/a")
 
 TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS requests (
@@ -79,11 +88,37 @@ MANIFEST_FIELDS = [
 ]
 
 
-def _json_columns(table: str, fields: list[str]) -> str:
-    """Build SELECT columns that pull fields out of a table's JSON."""
-    return ",\n    ".join(
-        f"json_extract({table}.json, '$.{field}') AS {field}" for field in fields
+def _json_column(source: str, field: str) -> str:
+    """Build a SELECT column that pulls one field out of JSON.
+
+    Text in MISSING_TEXT is returned as NULL.
+
+    Args:
+        source: SQL expression holding the JSON, e.g. "m.json".
+        field: Field name, also used as the column name.
+
+    Returns:
+        SQL column expression with an AS clause.
+    """
+    value = f"json_extract({source}, '$.{field}')"
+    missing = ", ".join(f"'{text}'" for text in MISSING_TEXT)
+    return (
+        f"CASE WHEN lower(trim({value})) IN ({missing}) "
+        f"THEN NULL ELSE {value} END AS {field}"
     )
+
+
+def _json_columns(source: str, fields: list[str]) -> str:
+    """Build SELECT columns that pull fields out of JSON.
+
+    Args:
+        source: SQL expression holding the JSON, e.g. "m.json".
+        fields: Field names, also used as the column names.
+
+    Returns:
+        Comma-separated SQL column expressions.
+    """
+    return ",\n    ".join(_json_column(source, field) for field in fields)
 
 
 VIEWS_SQL = f"""
@@ -92,7 +127,7 @@ CREATE VIEW v_requests AS
 SELECT
     r.request_id,
     r.pulled_at,
-    {_json_columns("r", REQUEST_FIELDS)},
+    {_json_columns("r.json", REQUEST_FIELDS)},
     json_array_length(r.json, '$.samples') AS numSamples
 FROM requests r;
 
@@ -101,7 +136,7 @@ CREATE VIEW v_request_samples AS
 SELECT
     r.request_id,
     json_extract(s.value, '$.igoSampleId') AS igoSampleId,
-    json_extract(s.value, '$.investigatorSampleId') AS investigatorSampleId,
+    {_json_column("s.value", "investigatorSampleId")},
     json_extract(s.value, '$.igoComplete') AS igoComplete
 FROM requests r, json_each(r.json, '$.samples') s;
 
@@ -111,7 +146,7 @@ SELECT
     m.request_id,
     m.igo_id,
     m.pulled_at,
-    {_json_columns("m", MANIFEST_FIELDS)},
+    {_json_columns("m.json", MANIFEST_FIELDS)},
     rs.igoComplete
 FROM sample_manifests m
 LEFT JOIN v_request_samples rs
@@ -122,10 +157,8 @@ CREATE VIEW v_fastqs AS
 SELECT
     m.request_id,
     m.igo_id,
-    json_extract(lib.value, '$.libraryIgoId') AS libraryIgoId,
-    json_extract(run.value, '$.runId') AS runId,
-    json_extract(run.value, '$.flowCellId') AS flowCellId,
-    json_extract(run.value, '$.runDate') AS runDate,
+    {_json_column("lib.value", "libraryIgoId")},
+    {_json_columns("run.value", ["runId", "flowCellId", "runDate"])},
     fq.value AS fastq
 FROM sample_manifests m,
     json_each(m.json, '$.libraries') lib,
@@ -196,6 +229,25 @@ def format_timestamp(stamp: str) -> str:
     """
     when = datetime.datetime.fromisoformat(stamp).astimezone()
     return when.strftime("%Y-%m-%d %H:%M")
+
+
+def clean_missing(record: dict) -> dict:
+    """Set LIMS missing-value text in a parsed JSON record to None.
+
+    Uses the same rule as the views: text in MISSING_TEXT, after
+    trimming spaces and lowercasing. Only top-level values are
+    checked. The dict is changed in place.
+
+    Args:
+        record: Dict parsed from LIMS JSON.
+
+    Returns:
+        The same dict.
+    """
+    for key, value in record.items():
+        if isinstance(value, str) and value.strip(" ").lower() in MISSING_TEXT:
+            record[key] = None
+    return record
 
 
 def get_request(conn: sqlite3.Connection, request_id: str) -> tuple[str, str] | None:
