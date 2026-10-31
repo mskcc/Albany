@@ -2,21 +2,20 @@
 
 ## Version 2.1.0
 
-LimsETL is a bioinformatics data extraction and processing pipeline that interfaces with IGO LIMS (Laboratory Information Management System) to retrieve genomic project metadata and generate standardized project files for downstream analysis pipelines.
+LimsETL retrieves genomic project metadata from IGO LIMS (Laboratory Information Management System), keeps a local SQLite copy of it, and writes standardized project files for downstream analysis pipelines.
 
 ## Features
 
 - Extract project metadata from IGO LIMS via REST API
-- Generate pipeline-specific project files for variant calling, RNA-seq, and ChIP-seq
+- Store pulled data in a local SQLite database and export it to xlsx and CSV
+- Write a sample-to-FASTQ mapping and sample metadata for each project
 - Support for multiple sequencing zones (JUNO, IRIS) with dynamic path handling
-- Automated sample-to-FASTQ mapping with comprehensive metadata
-- Request merging capabilities for multi-request projects
+- Rewrite the FASTQ root of a mapping file
 
 ## Installation
 
 ### Prerequisites
-- Python 3.x
-- R (for pipeline project generation)
+- Python 3.10 or later
 - Access to IGO LIMS system
 
 ### Setup
@@ -44,8 +43,15 @@ LimsETL is a bioinformatics data extraction and processing pipeline that interfa
 ```
 Generates three output files:
 - `Proj_<ID>_metadata.yaml`: Project-level metadata
-- `Proj_<ID>_sample_mapping.txt`: Sample-to-file mappings  
+- `Proj_<ID>_sample_mapping.txt`: Sample-to-file mappings
 - `Proj_<ID>_metadata_samples.csv`: Detailed sample metadata
+
+### Change the FASTQ Root
+```bash
+./resetFASTQRoot /new/root/FASTQ Proj_<ID>_sample_mapping.txt >new_mapping.txt
+```
+Replaces the part of each FASTQ path up to the first `/FASTQ/` with
+the new root. Reads stdin if no file is given and writes to stdout.
 
 ### Local LIMS Database
 Every request pulled from LIMS is stored, with its sample manifests
@@ -93,7 +99,7 @@ and there is one CSV file per view, named without the `v_` prefix.
 ### Key Features
 - Environment zone detection for FASTQ path resolution
 - Local SQLite copy of LIMS data for fast repeat runs and queries
-- Robust null value handling in metadata parsing
+- One empty value for every form of missing LIMS data
 - Primary IGO ID validation to prevent duplicates
 
 ## Testing
@@ -101,4 +107,10 @@ and there is one CSV file per view, named without the `v_` prefix.
 cd UnitTests
 ./doUnitTest01.sh
 ```
+
+## Retired Code
+The legacy R project scripts (`makeVariantProject.R`,
+`makeRNASeqProject.R`, `makeChIPSeqProject.R`, `mergeRequests.R`) and
+the `createBICProject.sh` wrapper are in `attic/` for reference. They
+are no longer maintained.
 
