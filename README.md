@@ -70,6 +70,11 @@ fields as columns for queries from Python or R:
 | `v_samples` | stored sample manifest, with sample metadata |
 | `v_fastqs` | FASTQ file, with library and run |
 
+LIMS writes a missing value in several ways: JSON null, `""`, `null`,
+`N/A`, `NA`, `na`. The views return all of them as NULL, and
+`getProjectFiles.py` writes them as empty values. `sex = "Unknown"` is
+kept as a value.
+
 ```r
 con <- DBI::dbConnect(RSQLite::SQLite(), "limsDB.sqlite")
 dplyr::tbl(con, "v_samples")
