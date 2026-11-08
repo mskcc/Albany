@@ -1,0 +1,503 @@
+#!/usr/bin/env python3
+"""Dump samples from the local LIMS database as TSV (or CSV with -c) on stdout.
+
+Subcommands select the requests whose samples are dumped:
+
+    recipe RECIPE       requests whose recipe is RECIPE
+    recipe -r PATTERN   requests whose recipe matches the regex PATTERN
+                        (case-insensitive, matched anywhere)
+    recipe -l           list the recipes of the stored requests, one per
+                        line, instead of dumping samples
+
+Only primary IGO IDs (e.g. 12345_A_1) with igoComplete set are output,
+one row per sample, sorted by request and sample number. Complete
+samples with no stored manifest are left out and listed on stderr.
+
+The output columns come from a column map: the file given with -m, else
+columnMap.csv in the current directory if there is one, else
+columnMap.csv next to this script. It has two columns, lims and name.
+Each row outputs the
+LIMS field `lims` under the column name `name`, in row order. The LIMS
+fields are the columns of the v_requests and v_samples views; where
+both have a field (request_id, pulled_at), the request value is used.
+deliveryDate is converted from epoch milliseconds to YYYY-MM-DD in
+local time.
+
+The database is opened read-only.
+"""
+
+import argparse
+import csv
+import datetime
+import os
+import re
+import sqlite3
+import sys
+from collections.abc import Callable
+from pathlib import Path
+from typing import NoReturn
+
+import limsDB
+
+MAP_FILE = "columnMap.csv"
+
+# Column map used when -m is not given and the current directory has none
+DEFAULT_MAP_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), MAP_FILE)
+
+MAP_HEADER = ["lims", "name"]
+
+Value = str | int | float | None
+
+# SQL condition on the v_requests view (alias r) and its parameters
+RequestFilter = tuple[str, list[str]]
+
+
+def epoch_ms_to_date(value: Value) -> Value:
+    """Convert epoch milliseconds to a YYYY-MM-DD date in local time.
+
+    Args:
+        value: Value from the database.
+
+    Returns:
+        The date, or the value unchanged if it is not a number.
+    """
+    if isinstance(value, (int, float)):
+        return datetime.datetime.fromtimestamp(value / 1000).date().isoformat()
+    return value
+
+
+# Conversions applied before output, keyed by LIMS field name
+CONVERTERS: dict[str, Callable[[Value], Value]] = {
+    "deliveryDate": epoch_ms_to_date,
+}
+
+
+def fail(message: str) -> NoReturn:
+    """Print an error message on stderr and exit with status 1.
+
+    Args:
+        message: Error message.
+    """
+    print(f"ERROR: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def read_column_map(path: str) -> list[tuple[str, str]]:
+    """Read the column map.
+
+    Blank lines are skipped. Spaces around fields are removed.
+
+    Args:
+        path: Path to the column map CSV.
+
+    Returns:
+        List of (LIMS field, output name) pairs in file order.
+
+    Raises:
+        OSError: If the file cannot be read.
+        ValueError: If the header is not lims,name, a row does not have
+            two non-empty fields, there are no rows, or an output name
+            is used more than once.
+    """
+    with open(path, newline="", encoding="utf-8-sig") as fp:
+        reader = csv.reader(fp)
+        header = [h.strip() for h in next(reader, [])]
+        if header != MAP_HEADER:
+            raise ValueError(f"header must be {','.join(MAP_HEADER)}")
+        pairs = []
+        for row in reader:
+            if not row:
+                continue
+            fields = [f.strip() for f in row]
+            if len(fields) != 2 or not all(fields):
+                raise ValueError(
+                    f"line {reader.line_num}: need two non-empty fields, "
+                    f"got {','.join(row)}"
+                )
+            pairs.append((fields[0], fields[1]))
+    if not pairs:
+        raise ValueError("no columns listed")
+    names = [name for _, name in pairs]
+    repeated = sorted({name for name in names if names.count(name) > 1})
+    if repeated:
+        raise ValueError(f"output name used more than once: {', '.join(repeated)}")
+    return pairs
+
+
+def connect_read_only(path: str) -> sqlite3.Connection:
+    """Open the database read-only.
+
+    Args:
+        path: Path to the SQLite database file.
+
+    Returns:
+        Open read-only connection.
+    """
+    uri = Path(path).resolve().as_uri() + "?mode=ro"
+    return sqlite3.connect(uri, uri=True)
+
+
+def view_columns(conn: sqlite3.Connection, view: str) -> list[str]:
+    """Return the column names of a view.
+
+    Args:
+        conn: Open database connection.
+        view: View name.
+
+    Returns:
+        Column names in view order.
+    """
+    cur = conn.execute(f"SELECT * FROM {view} LIMIT 0")
+    return [d[0] for d in cur.description]
+
+
+def field_sources(conn: sqlite3.Connection) -> dict[str, str]:
+    """Map each LIMS field to the SQL column that holds it.
+
+    Request fields come from v_requests (alias r) and sample fields
+    from v_samples (alias s). A field in both is taken from r.
+
+    Args:
+        conn: Open database connection.
+
+    Returns:
+        Dict mapping LIMS field name to a qualified SQL column.
+    """
+    sources = {c: f's."{c}"' for c in view_columns(conn, "v_samples")}
+    sources.update({c: f'r."{c}"' for c in view_columns(conn, "v_requests")})
+    return sources
+
+
+def is_primary(request_id: str, igo_id: str) -> bool:
+    """Check whether an IGO ID is a primary ID of a request.
+
+    Args:
+        request_id: IGO request ID, e.g. "12345_A".
+        igo_id: IGO sample ID.
+
+    Returns:
+        True for "<request_id>_<n>", e.g. 12345_A_1; False for
+        secondary IDs such as 12345_A_1_1.
+    """
+    return re.fullmatch(rf"{re.escape(request_id)}_\d+", igo_id) is not None
+
+
+def sample_number(igo_id: str) -> int:
+    """Return the sample number of a primary IGO ID.
+
+    Args:
+        igo_id: Primary IGO sample ID, e.g. "12345_A_7".
+
+    Returns:
+        The number after the last underscore, e.g. 7.
+    """
+    return int(igo_id.rsplit("_", 1)[1])
+
+
+def list_recipes(conn: sqlite3.Connection) -> list[str]:
+    """Return the recipes of the stored requests.
+
+    Args:
+        conn: Open database connection.
+
+    Returns:
+        Sorted list of distinct recipe names; requests with no recipe
+        are left out.
+    """
+    return [
+        row[0]
+        for row in conn.execute(
+            "SELECT DISTINCT recipe FROM v_requests WHERE recipe IS NOT NULL "
+            "ORDER BY recipe"
+        )
+    ]
+
+
+def match_recipes(conn: sqlite3.Connection, recipe: str, regex: bool) -> list[str]:
+    """Find the stored recipes that match a recipe argument.
+
+    Args:
+        conn: Open database connection.
+        recipe: Recipe name, or a regex if regex is True.
+        regex: Treat recipe as a case-insensitive regex searched
+            anywhere in the recipe name.
+
+    Returns:
+        Sorted list of matching recipe names; empty if none match.
+
+    Raises:
+        re.error: If regex is True and recipe is not a valid regex.
+    """
+    recipes = list_recipes(conn)
+    if not regex:
+        return [recipe] if recipe in recipes else []
+    pattern = re.compile(recipe, re.IGNORECASE)
+    return [r for r in recipes if pattern.search(r)]
+
+
+def recipe_filter(conn: sqlite3.Connection, args: argparse.Namespace) -> RequestFilter:
+    """Build the request filter for the recipe subcommand.
+
+    Exits with an error if the regex is not valid or no recipe matches.
+    With -r, the matching recipes are listed on stderr.
+
+    Args:
+        conn: Open database connection.
+        args: Parsed arguments with recipe and regex attributes.
+
+    Returns:
+        SQL condition on v_requests and its parameters.
+    """
+    try:
+        recipes = match_recipes(conn, args.recipe, args.regex)
+    except re.error as e:
+        fail(f"invalid regex {args.recipe!r}: {e}")
+    if not recipes:
+        hint = "" if args.regex else " (use -r for a regex match)"
+        fail(f"no requests with recipe {args.recipe!r}{hint}")
+    if args.regex:
+        print(f"Recipes: {', '.join(recipes)}", file=sys.stderr)
+    marks = ", ".join("?" * len(recipes))
+    return f"r.recipe IN ({marks})", recipes
+
+
+def get_samples(
+    conn: sqlite3.Connection,
+    request_filter: RequestFilter,
+    select: list[str],
+) -> list[tuple[Value, ...]]:
+    """Return the complete primary samples of the selected requests.
+
+    Args:
+        conn: Open database connection.
+        request_filter: SQL condition on v_requests and its parameters.
+        select: Qualified SQL columns to return for each sample.
+
+    Returns:
+        Rows of (request_id, igo_id, *selected values), sorted by
+        request ID and sample number.
+    """
+    where, params = request_filter
+    sql = f"""
+        SELECT r.request_id, s.igo_id, {", ".join(select)}
+        FROM v_requests r
+        JOIN v_samples s ON s.request_id = r.request_id
+        WHERE ({where}) AND s.igoComplete = 1
+    """
+    rows = [row for row in conn.execute(sql, params) if is_primary(row[0], row[1])]
+    rows.sort(key=lambda row: (row[0], sample_number(row[1])))
+    return rows
+
+
+def get_missing_manifests(
+    conn: sqlite3.Connection, request_filter: RequestFilter
+) -> list[str]:
+    """Return complete primary samples of the selected requests that have
+    no stored manifest.
+
+    Args:
+        conn: Open database connection.
+        request_filter: SQL condition on v_requests and its parameters.
+
+    Returns:
+        IGO IDs sorted by request ID and sample number.
+    """
+    where, params = request_filter
+    sql = f"""
+        SELECT rs.request_id, rs.igoSampleId
+        FROM v_requests r
+        JOIN v_request_samples rs ON rs.request_id = r.request_id
+        LEFT JOIN sample_manifests m
+            ON m.request_id = rs.request_id AND m.igo_id = rs.igoSampleId
+        WHERE ({where}) AND rs.igoComplete = 1 AND m.igo_id IS NULL
+    """
+    rows = [
+        (request_id, igo_id)
+        for request_id, igo_id in conn.execute(sql, params)
+        if igo_id and is_primary(request_id, igo_id)
+    ]
+    rows.sort(key=lambda row: (row[0], sample_number(row[1])))
+    return [igo_id for _, igo_id in rows]
+
+
+def write_table(
+    column_map: list[tuple[str, str]],
+    rows: list[tuple[Value, ...]],
+    delimiter: str,
+) -> None:
+    """Write the samples as a delimited table on stdout.
+
+    NULL is written as empty. Fields that contain the delimiter, a
+    quote, or a newline are quoted.
+
+    Args:
+        column_map: (LIMS field, output name) pairs, one per column.
+        rows: Rows from get_samples(); the first two values (request_id,
+            igo_id) are not written.
+        delimiter: Field separator, "\\t" for TSV or "," for CSV.
+    """
+    converters = [CONVERTERS.get(lims) for lims, _ in column_map]
+    writer = csv.writer(sys.stdout, delimiter=delimiter, lineterminator="\n")
+    writer.writerow([name for _, name in column_map])
+    for row in rows:
+        writer.writerow(
+            [conv(v) if conv else v for conv, v in zip(converters, row[2:])]
+        )
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse command-line arguments.
+
+    Args:
+        argv: Argument list (defaults to sys.argv[1:]).
+
+    Returns:
+        Parsed namespace with db, map, command, request_filter, and the
+        subcommand's own attributes.
+    """
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "-d",
+        "--db",
+        default=limsDB.get_db_path(),
+        help="database path (default: %(default)s)",
+    )
+    common.add_argument(
+        "-m",
+        "--map",
+        help=f"column map CSV (default: ./{MAP_FILE} if it exists, "
+        f"else {DEFAULT_MAP_PATH})",
+    )
+    common.add_argument(
+        "-c",
+        "--csv",
+        action="store_true",
+        help="write CSV instead of TSV",
+    )
+
+    parser = argparse.ArgumentParser(
+        description="Dump samples from the local LIMS database as TSV (or "
+        "CSV with -c) on stdout. Only complete samples with primary IGO IDs "
+        "are output. The column map selects, orders, and names the columns.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+
+    recipe = subparsers.add_parser(
+        "recipe",
+        parents=[common],
+        help="samples from requests with a recipe",
+        description="Dump the samples of all requests with a recipe.",
+    )
+    recipe.add_argument(
+        "recipe",
+        metavar="RECIPE",
+        nargs="?",
+        help="recipe name, or a regex with -r (required unless -l)",
+    )
+    recipe.add_argument(
+        "-r",
+        "--regex",
+        action="store_true",
+        help="treat RECIPE as a case-insensitive regex matched anywhere "
+        "in the recipe name",
+    )
+    recipe.add_argument(
+        "-l",
+        "--list",
+        action="store_true",
+        help="list the recipes of the stored requests, one per line, and exit",
+    )
+    recipe.set_defaults(request_filter=recipe_filter)
+
+    args = parser.parse_args(argv)
+    if args.command == "recipe":
+        if args.list and args.recipe is not None:
+            recipe.error("-l takes no RECIPE")
+        if not args.list and args.recipe is None:
+            recipe.error("RECIPE is required unless -l is given")
+    return args
+
+
+def close_stdout() -> NoReturn:
+    """Exit with status 1 after stdout was closed early (e.g. by head).
+
+    Points stdout at /dev/null so Python does not report the broken
+    pipe again on exit.
+    """
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull, sys.stdout.fileno())
+    sys.exit(1)
+
+
+def print_lines(lines: list[str]) -> None:
+    """Print lines on stdout, exiting quietly if stdout is closed early.
+
+    Args:
+        lines: Lines to print.
+    """
+    try:
+        for line in lines:
+            print(line)
+        sys.stdout.flush()
+    except BrokenPipeError:
+        close_stdout()
+
+
+def main() -> None:
+    """Dump the samples of the requests the subcommand selects."""
+    args = parse_args()
+
+    if not os.path.isfile(args.db):
+        fail(f"database not found: {args.db}")
+    conn = connect_read_only(args.db)
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version < limsDB.SCHEMA_VERSION:
+        fail(
+            f"database schema version {version} is older than "
+            f"{limsDB.SCHEMA_VERSION}; run dumpLimsDB.py once to upgrade it"
+        )
+
+    if args.command == "recipe" and args.list:
+        recipes = list_recipes(conn)
+        conn.close()
+        print_lines(recipes)
+        return
+
+    if args.map is None:
+        args.map = MAP_FILE if os.path.isfile(MAP_FILE) else DEFAULT_MAP_PATH
+    try:
+        column_map = read_column_map(args.map)
+    except (OSError, ValueError) as e:
+        fail(f"column map {args.map}: {e}")
+
+    sources = field_sources(conn)
+    unknown = [lims for lims, _ in column_map if lims not in sources]
+    if unknown:
+        fail(
+            f"column map {args.map}: unknown LIMS field(s): "
+            f"{', '.join(unknown)}\nKnown fields: {', '.join(sources)}"
+        )
+
+    request_filter = args.request_filter(conn, args)
+    rows = get_samples(conn, request_filter, [sources[f] for f, _ in column_map])
+    missing = get_missing_manifests(conn, request_filter)
+    conn.close()
+
+    try:
+        write_table(column_map, rows, "," if args.csv else "\t")
+        sys.stdout.flush()
+    except BrokenPipeError:
+        close_stdout()
+
+    requests = {row[0] for row in rows}
+    print(f"{len(rows)} samples from {len(requests)} requests", file=sys.stderr)
+    if missing:
+        print(
+            f"WARNING: {len(missing)} complete sample(s) have no stored "
+            f"manifest and were left out: {' '.join(missing)}",
+            file=sys.stderr,
+        )
+
+
+if __name__ == "__main__":
+    main()
