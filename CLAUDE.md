@@ -21,7 +21,7 @@ limsDB.sqlite       (local copy of pulled requests and manifests)
     |       +-> Proj_<ID>_sample_mapping.txt   (sample-to-FASTQ mappings, TSV)
     |       +-> Proj_<ID>_metadata_samples.csv (detailed sample metadata)
     |
-    +-> dumpLimsDB.py       (exports the views to xlsx and CSV)
+    +-> dumpLimsDB.py       (exports the views to CSV; xlsx with -x)
     |
     +-> dumpProjects        (dumps samples of selected requests as TSV/CSV)
 ```
@@ -31,7 +31,7 @@ limsDB.sqlite       (local copy of pulled requests and manifests)
 - **limsETL.py**: Core library. Classes (`Sample`, `RequestSamples`, `SampleManifest`, `Library`, `Run`, `MachineRuns`) wrap LIMS JSON responses by assigning `__dict__` directly from JSON. API functions (`getRequestSamples`, `getSampleManifest`, `getDeliveries`) call `settings.LIMS_ROOT_URL` with basic auth. `get_request_samples_json` and `get_sample_manifest_json` return the raw JSON that the object functions wrap.
 - **limsDB.py**: Local SQLite store. Tables `requests` and `sample_manifests` hold raw LIMS JSON with an ISO 8601 `pulled_at`; views `v_requests`, `v_request_samples`, `v_samples`, `v_fastqs` expose fields as columns. Path is `settings.LIMS_DB_PATH` if set, else `limsDB.sqlite` in the code directory. Uses the default rollback journal, not WAL, because the DB may be on a network filesystem. `PRAGMA user_version` is the schema version; bump `SCHEMA_VERSION` when tables or views change. LIMS writes missing values in several ways; `MISSING_TEXT` (`""`, `null`, `none`, `na`, `n/a`, matched after trimming spaces, any case) lists the text forms. The views return them as NULL and `clean_missing()` sets them to None in parsed JSON. The stored JSON is left as LIMS sent it.
 - **getProjectFiles.py**: Main entry point. Filters to primary IGO IDs only (regex `^<projectNo>_\d+$`). If the request is in the local DB, uses it (no request call) and pulls only complete samples missing from it; otherwise, or with `-f`, pulls from LIMS and replaces the stored request and its manifests. Output files are built from the same JSON either way, after `limsDB.clean_missing()`; missing values are written as empty fields in the CSV and `""` in the YAML. Failed sample pulls are not stored; those samples are left out of all outputs, and complete ones are reported on stderr with exit 1. Complete samples with no FASTQ files are reported the same way. A run from a local copy warns when samples were incomplete at pull time.
-- **dumpLimsDB.py**: Exports the four views to `<OUT>_<YYMMDD>.xlsx` (one sheet per view, via openpyxl) and `<OUT>_<YYMMDD>_<view>.csv`, with the date of the dump; names drop the `v_` prefix. NULL is written as an empty field or cell. `-d` sets the database, `-o` the output prefix (default `lims/limsDB`, so files go in `./lims/`, created if needed). Exits 1 if the database does not exist.
+- **dumpLimsDB.py**: Exports the four views to `<OUT>_<YYMMDD>_<view>.csv` and, with `-x`/`--dump-xlsx` (off by default because it is slow), to `<OUT>_<YYMMDD>.xlsx` (one sheet per view, via openpyxl), with the date of the dump; names drop the `v_` prefix. NULL is written as an empty field or cell. `-d` sets the database, `-o` the output prefix (default `lims/limsDB`, so files go in `./lims/`, created if needed). Exits 1 if the database does not exist.
 - **dumpProjects**: Dumps samples of the requests a subcommand selects, as TSV (CSV with `-c`) on stdout, one row per sample, sorted by request and sample number. `recipe RECIPE` selects requests whose recipe equals RECIPE; with `-r`, RECIPE is a case-insensitive regex searched anywhere in the recipe, and the matching recipes are listed on stderr. `recipe -l` lists the distinct recipes of the stored requests, sorted, one per line, and does not read the column map. Only primary IGO IDs with igoComplete set are output. Complete samples with no stored manifest are left out and listed on stderr (exit status stays 0). Opens the database read-only and exits 1 if its schema version is older than `limsDB.SCHEMA_VERSION`. `-d` sets the database, `-m` the column map. New subcommands supply a function that returns a SQL condition on `v_requests` (alias `r`) and its parameters, set with `set_defaults(request_filter=...)`.
 - **columnMap.csv**: Output columns of dumpProjects. The map used is the `-m` file, else `columnMap.csv` in the current directory if it exists, else the copy in the code directory. Header `lims,name`; each row outputs LIMS field `lims` under column name `name`, in row order. Only listed fields are output. Fields are the columns of `v_requests` and `v_samples`; for fields in both (`request_id`, `pulled_at`) the request value is used. Unknown fields, repeated output names, or a bad header are errors. `dumpProjects.CONVERTERS` holds per-field conversions keyed by LIMS name; `deliveryDate` is converted from epoch milliseconds to YYYY-MM-DD in local time.
 - **resetFASTQRoot**: Rewrites the FASTQ root of the paths in a `Proj_<ID>_sample_mapping.txt` file (the part up to the first `/FASTQ/`). Reads the file, or stdin, and writes stdout.
@@ -54,8 +54,8 @@ FASTQ paths differ between compute zones. `get_zone_from_env()` reads `CDC_JOINE
 # Force a re-pull from LIMS and replace the local copy
 ./getProjectFiles.py -f <PROJECT_NUMBER>
 
-# Export the local database views to Excel and CSV
-./dumpLimsDB.py [-d DB] [-o OUT_PREFIX]
+# Export the local database views to CSV (and Excel with -x)
+./dumpLimsDB.py [-d DB] [-o OUT_PREFIX] [-x]
 
 # Dump samples of requests with a recipe (exact, or regex with -r)
 ./dumpProjects recipe [-d DB] [-m MAP] [-c] [-r] RECIPE

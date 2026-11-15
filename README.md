@@ -7,7 +7,7 @@ LimsETL retrieves genomic project metadata from IGO LIMS (Laboratory Information
 ## Features
 
 - Extract project metadata from IGO LIMS via REST API
-- Store pulled data in a local SQLite database and export it to xlsx and CSV
+- Store pulled data in a local SQLite database and export it to CSV (and xlsx)
 - Write a sample-to-FASTQ mapping and sample metadata for each project
 - Support for multiple sequencing zones (JUNO, IRIS) with dynamic path handling
 - Rewrite the FASTQ root of a mapping file
@@ -88,12 +88,14 @@ dplyr::tbl(con, "v_samples")
 
 To export the views as flat tables:
 ```bash
-./dumpLimsDB.py              # lims/limsDB_<YYMMDD>.xlsx, lims/limsDB_<YYMMDD>_<view>.csv
-./dumpLimsDB.py -o out/lims  # out/lims_<YYMMDD>.xlsx, out/lims_<YYMMDD>_<view>.csv
+./dumpLimsDB.py              # lims/limsDB_<YYMMDD>_<view>.csv
+./dumpLimsDB.py -x           # also lims/limsDB_<YYMMDD>.xlsx
+./dumpLimsDB.py -o out/lims  # out/lims_<YYMMDD>_<view>.csv
 ```
 `<YYMMDD>` is the date of the dump. The default output directory is
-`./lims/`, created if needed. The workbook has one sheet per view,
-and there is one CSV file per view, named without the `v_` prefix.
+`./lims/`, created if needed. There is one CSV file per view, named
+without the `v_` prefix. `-x` (`--dump-xlsx`) also writes a workbook
+with one sheet per view; it is off by default because it is slow.
 `-d` selects a different database.
 
 ### Key Features
