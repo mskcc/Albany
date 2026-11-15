@@ -86,7 +86,7 @@ con <- DBI::dbConnect(RSQLite::SQLite(), "limsDB.sqlite")
 dplyr::tbl(con, "v_samples")
 ```
 
-To export the views as flat tables:
+To export the views, except `v_fastqs`, as flat tables:
 ```bash
 ./dumpLimsDB.py              # lims/limsDB_<YYMMDD>_<view>.csv
 ./dumpLimsDB.py -x           # also lims/limsDB_<YYMMDD>.xlsx
@@ -96,7 +96,9 @@ To export the views as flat tables:
 `./lims/`, created if needed. There is one CSV file per view, named
 without the `v_` prefix. `-x` (`--dump-xlsx`) also writes a workbook
 with one sheet per view; it is off by default because it is slow.
-`-d` selects a different database.
+`-d` selects a different database. `v_fastqs` is not exported because
+it is too slow on DLP samples, which have tens of thousands of FASTQ
+files each.
 
 ### Key Features
 - Environment zone detection for FASTQ path resolution
