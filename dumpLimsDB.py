@@ -23,8 +23,10 @@ from openpyxl.worksheet._write_only import WriteOnlyWorksheet
 import limsDB
 
 # Views to dump, in sheet order. The "v_" prefix is dropped from the
-# sheet and CSV names.
-VIEWS = ["v_requests", "v_request_samples", "v_samples", "v_fastqs"]
+# sheet and CSV names. v_fastqs is left out: DLP samples have tens of
+# thousands of FASTQ files in one run, and the view does not finish on
+# them in reasonable time.
+VIEWS = ["v_requests", "v_request_samples", "v_samples"]
 
 # Excel row limit, including the header row
 EXCEL_MAX_ROWS = 1048576
@@ -98,7 +100,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "per view.",
         epilog="Output files: <OUT>_<YYMMDD>_<view>.csv and, with -x, "
         "<OUT>_<YYMMDD>.xlsx, with today's date and views "
-        "requests, request_samples, samples, fastqs",
+        "requests, request_samples, samples",
     )
     parser.add_argument(
         "-d",
