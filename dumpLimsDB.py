@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Dump the local LIMS database views to an Excel workbook and CSV files.
+"""Dump the local LIMS database views to CSV files and, optionally, an
+Excel workbook.
 
 Missing values are written as empty CSV fields and empty cells. The
 views already return LIMS missing-value text ("null", "N/A", ...) as
@@ -89,13 +90,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         argv: Argument list (defaults to sys.argv[1:]).
 
     Returns:
-        Parsed namespace with db and out attributes.
+        Parsed namespace with db, out, and dump_xlsx attributes.
     """
     parser = argparse.ArgumentParser(
-        description="Dump the views of the local LIMS database to an Excel "
-        "workbook with one sheet per view and to one CSV file per view.",
-        epilog="Output files: <OUT>_<YYMMDD>.xlsx and "
-        "<OUT>_<YYMMDD>_<view>.csv, with today's date and views "
+        description="Dump the views of the local LIMS database to one CSV "
+        "file per view and, with -x, to an Excel workbook with one sheet "
+        "per view.",
+        epilog="Output files: <OUT>_<YYMMDD>_<view>.csv and, with -x, "
+        "<OUT>_<YYMMDD>.xlsx, with today's date and views "
         "requests, request_samples, samples, fastqs",
     )
     parser.add_argument(
@@ -110,13 +112,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=os.path.join("lims", "limsDB"),
         help="output path prefix (default: %(default)s)",
     )
+    parser.add_argument(
+        "-x",
+        "--dump-xlsx",
+        action="store_true",
+        help="also write the Excel workbook (slow; default: off)",
+    )
     return parser.parse_args(argv)
 
 
 def main() -> None:
-    """Dump each view to a sheet of <OUT>_<YYMMDD>.xlsx and to a CSV file.
+    """Dump each view to a CSV file and, with -x, to a sheet of the workbook.
 
-    The CSV files are <OUT>_<YYMMDD>_<view>.csv, with today's date.
+    The CSV files are <OUT>_<YYMMDD>_<view>.csv and the workbook is
+    <OUT>_<YYMMDD>.xlsx, with today's date.
     """
     args = parse_args()
 
@@ -130,7 +139,7 @@ def main() -> None:
     out = f"{args.out}_{datetime.date.today():%y%m%d}"
 
     conn = limsDB.connect(args.db)
-    wb = Workbook(write_only=True)
+    wb = Workbook(write_only=True) if args.dump_xlsx else None
     for view in VIEWS:
         name = view.removeprefix("v_")
         columns, rows = read_view(conn, view)
@@ -139,6 +148,8 @@ def main() -> None:
         write_csv(csv_file, columns, rows)
         print(f"{name}: {len(rows)} rows -> {csv_file}")
 
+        if wb is None:
+            continue
         if len(rows) + 1 > EXCEL_MAX_ROWS:
             print(
                 f"WARNING: {name} has too many rows for Excel; "
@@ -153,6 +164,8 @@ def main() -> None:
             ws.append([excel_value(ws, v) for v in row])
     conn.close()
 
+    if wb is None:
+        return
     xlsx_file = f"{out}.xlsx"
     wb.views = [
         BookView(xWindow=4000, yWindow=3000, windowWidth=32000, windowHeight=20000)
