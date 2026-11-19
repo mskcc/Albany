@@ -155,20 +155,27 @@ def get_sample_mapping_data(
 ) -> list[list]:
     """Extract run ID, FASTQ directory, and run type for each machine run.
 
+    LIMS can list the same machine run more than once for a sample:
+    under two libraries (a failed prep and its re-prep), or twice in
+    one library. Each (run ID, FASTQ directory) pair is returned once,
+    in the order first seen. If any listing of the pair has R2 files,
+    its run type is PE.
+
     Args:
         sample_obj: SampleManifest with library and run information.
 
     Returns:
-        List of [run_id, fastq_dir, run_type] entries.
+        List of [run_id, fastq_dir, run_type] entries, with no
+        repeated (run_id, fastq_dir) pair.
     """
-    mapping_data = []
+    mapping_data: dict[tuple[str, str], str] = {}
     for lib in sample_obj.libraries:
         for run in lib.runs:
             if run.machineRuns is not None:
                 for run_id, machine_run in run.machineRuns.items():
-                    mapping_data.append(
-                        [run_id, machine_run.fastqDir, machine_run.runType]
-                    )
+                    key = (run_id, machine_run.fastqDir)
+                    if mapping_data.get(key) != "PE":
+                        mapping_data[key] = machine_run.runType
             else:
                 print(
                     MISSING_SAMPLE_MESSAGE.format(
@@ -178,7 +185,10 @@ def get_sample_mapping_data(
                     )
                 )
 
-    return mapping_data
+    return [
+        [run_id, fastq_dir, run_type]
+        for (run_id, fastq_dir), run_type in mapping_data.items()
+    ]
 
 
 def derive_sample_id_from_fastq(fastq_dir: str) -> str:
